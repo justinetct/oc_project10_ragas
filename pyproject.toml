@@ -43,6 +43,23 @@ pytest = "^8.0"
 ruff = ">=0.6"
 ipykernel = "^7.0"           # pour exécuter le notebook depuis l'environnement Poetry
 
+# ─── Qualité de code ───────────────────────────────────────────────
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+# On ne lint pas les dossiers locaux / artefacts ni le notebook (détails fragiles).
+extend-exclude = [".venv", "vector_db", "database", "notebooks", ".ipynb_checkpoints"]
+
+[tool.ruff.lint]
+# Jeu de règles volontairement simple (niveau prototype) :
+#   F = pyflakes (imports inutilisés, noms non définis…), E/W = style pycodestyle.
+select = ["E", "F", "W"]
+ignore = ["E501"]  # longueur de ligne tolérée sur ce prototype
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"

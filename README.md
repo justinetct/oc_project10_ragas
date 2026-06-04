@@ -115,6 +115,23 @@ Exemple observé : le modèle peut répondre **Shai Gilgeous-Alexander — 37,5 
 - Les réponses peuvent être plausibles mais insuffisamment ancrées dans les sources.
 - Les questions numériques nécessitent un traitement structuré complémentaire.
 
+## Qualité de code
+
+Trois contrôles simples permettent d'éviter de casser le prototype entre deux itérations :
+
+```bash
+# Compilation : vérifie la syntaxe de tous les modules
+poetry run python -m compileall MistralChat.py indexer.py utils notebooks tests
+
+# Linter
+poetry run ruff check .
+
+# Tests de non-régression (sans appel API ni OCR)
+poetry run pytest
+```
+
+Les tests du dossier `tests/` sont volontairement légers : ils vérifient la configuration, la présence des fichiers d'entrée et l'import des modules sans effet de bord. Ils ne déclenchent **aucun** appel à l'API Mistral, ni l'OCR, ni la reconstruction de l'index FAISS.
+
 ## Commandes utiles
 
 ```bash
@@ -126,8 +143,6 @@ poetry run python indexer.py
 
 # Lancer l'application
 poetry run streamlit run MistralChat.py
-
-# Outils de développement
-poetry run ruff check .
-poetry run pytest
 ```
+
+Voir aussi la section **Qualité de code** ci-dessus (`compileall`, `ruff`, `pytest`).

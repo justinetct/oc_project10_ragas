@@ -4,7 +4,7 @@ import pickle
 import faiss
 import numpy as np
 import logging
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Optional
 from mistralai import Mistral
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document # Utilisé pour le format attendu par le splitter
@@ -145,8 +145,10 @@ class VectorStoreManager:
             self.document_chunks = []
             self.index = None
             # Supprimer les fichiers potentiellement corrompus
-            if os.path.exists(FAISS_INDEX_FILE): os.remove(FAISS_INDEX_FILE)
-            if os.path.exists(DOCUMENT_CHUNKS_FILE): os.remove(DOCUMENT_CHUNKS_FILE)
+            if os.path.exists(FAISS_INDEX_FILE):
+                os.remove(FAISS_INDEX_FILE)
+            if os.path.exists(DOCUMENT_CHUNKS_FILE):
+                os.remove(DOCUMENT_CHUNKS_FILE)
             return
 
 

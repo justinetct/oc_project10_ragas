@@ -17,7 +17,7 @@ try:
 
     # Initialiser le lecteur EasyOCR une seule fois
     logging.info("Initialisation du lecteur EasyOCR...")
-    reader = easyocr.Reader(['en', 'fr']) 
+    reader = easyocr.Reader(['en', 'fr'])
     logging.info("Lecteur EasyOCR initialisé.")
 
 except ImportError as e:
@@ -52,7 +52,7 @@ def extract_text_from_pdf_with_ocr(file_path: str) -> Optional[str]:
             page = doc.load_page(page_num)
             pix = page.get_pixmap(matrix=fitz.Matrix(2, 2)) # Augmenter la résolution pour l'OCR
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            
+
             try:
                 img_np = np.array(img)
                 results = reader.readtext(img_np)
@@ -81,7 +81,7 @@ def extract_text_from_pdf(file_path: str) -> Optional[str]:
         from PyPDF2 import PdfReader
         reader = PdfReader(file_path)
         text = "".join(page.extract_text() + "\n" for page in reader.pages if page.extract_text())
-        
+
         if len(text.strip()) < 100: # Si très peu de texte est extrait, tenter l'OCR
             logging.info(f"Peu de texte trouvé dans {file_path} via extraction standard ({len(text.strip())} caractères). Tentative d'OCR...")
             ocr_text = extract_text_from_pdf_with_ocr(file_path)
@@ -90,7 +90,7 @@ def extract_text_from_pdf(file_path: str) -> Optional[str]:
             else:
                 logging.warning(f"L'OCR n'a pas non plus produit de texte significatif pour {file_path}.")
                 return text # Retourne le peu de texte trouvé ou vide
-        
+
         logging.info(f"Texte extrait de PDF: {file_path} ({len(text)} caractères)")
         return text
     except Exception as e:
@@ -165,7 +165,7 @@ def extract_text_from_excel(file_path: str) -> Optional[Union[str, Dict[str, str
         for sheet_name in excel_file.sheet_names:
             df = excel_file.parse(sheet_name)
             sheets_data[sheet_name] = df.to_string()
-        
+
         logging.info(f"Texte extrait de {len(sheets_data)} feuille(s) dans Excel: {file_path}")
         # Si une seule feuille, retourne directement le texte pour la compatibilité
         if len(sheets_data) == 1:
@@ -225,7 +225,7 @@ def load_and_parse_files(input_dir: str) -> List[Dict[str, any]]:
             relative_path = file_path.relative_to(input_path)
             source_folder = relative_path.parts[0] if len(relative_path.parts) > 1 else "root"
             ext = file_path.suffix.lower()
-            
+
             logging.debug(f"Traitement du fichier: {relative_path} (Dossier source: {source_folder})")
 
             extracted_content = None
@@ -247,7 +247,7 @@ def load_and_parse_files(input_dir: str) -> List[Dict[str, any]]:
             if not extracted_content:
                 logging.warning(f"Aucun contenu n'a pu être extrait de {relative_path}")
                 continue
-            
+
             # Si c'est un dictionnaire (plusieurs feuilles Excel), créer un doc par feuille
             if isinstance(extracted_content, dict):
                 for sheet_name, text in extracted_content.items():

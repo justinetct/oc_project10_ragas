@@ -1,9 +1,7 @@
 # MistralChat.py (version RAG)
 import streamlit as st
-import os
 import logging
 from mistralai import Mistral
-from dotenv import load_dotenv
 
 # --- Importations depuis vos modules ---
 try:
@@ -65,15 +63,15 @@ vector_store_manager = get_vector_store_manager()
 
 # --- Prompt Système pour RAG ---
 # Adaptez ce prompt selon vos besoins
-SYSTEM_PROMPT = f"""Tu es 'NBA Analyst AI', un assistant expert sur la ligue de basketball NBA.
+SYSTEM_PROMPT = """Tu es 'NBA Analyst AI', un assistant expert sur la ligue de basketball NBA.
 Ta mission est de répondre aux questions des fans en animant le débat.
 
 ---
-{{context_str}}
+{context_str}
 ---
 
 QUESTION DU FAN:
-{{question}}
+{question}
 
 RÉPONSE DE L'ANALYSTE NBA:"""
 
