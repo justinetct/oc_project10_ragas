@@ -1,135 +1,135 @@
-# Assistant RAG avec Mistral
+# Évaluez les performances d'un LLM
 
-Ce projet implémente un assistant virtuel basé sur le modèle Mistral, utilisant la technique de Retrieval-Augmented Generation (RAG) pour fournir des réponses précises et contextuelles à partir d'une base de connaissances personnalisée.
+Assistant d'analyse NBA basé sur une approche RAG (*Retrieval-Augmented Generation*).
+
+L'application permet d'interroger des sources documentaires NBA mixtes : archives Reddit extraites par OCR, documents PDF et fichier Excel de statistiques. Les documents sont indexés dans FAISS, puis interrogés via une interface Streamlit et un modèle Mistral.
 
 ## Fonctionnalités
 
-- 🔍 **Recherche sémantique** avec FAISS pour trouver les documents pertinents
-- 🤖 **Génération de réponses** avec les modèles Mistral (Small ou Large)
-- ⚙️ **Paramètres personnalisables** (modèle, nombre de documents, score minimum)
+- chargement de documents depuis `inputs/` ;
+- extraction OCR des PDF Reddit ;
+- lecture d'un fichier Excel de statistiques NBA ;
+- génération d'embeddings avec Mistral ;
+- création d'un index FAISS local ;
+- recherche vectorielle dans les documents ;
+- génération de réponses avec Mistral ;
+- interface utilisateur Streamlit.
+
+## Structure du dépôt
+
+```text
+.
+├── MistralChat.py              # Application Streamlit
+├── indexer.py                  # Script d'indexation des documents
+├── requirements.txt            # Dépendances Python
+├── .env.example                # Exemple de configuration sans clé réelle
+├── inputs/                     # Documents sources
+│   ├── Reddit 1.pdf
+│   ├── Reddit 2.pdf
+│   ├── Reddit 3.pdf
+│   ├── Reddit 4.pdf
+│   └── regular NBA.xlsx
+├── utils/
+│   ├── config.py               # Configuration des chemins et variables d'environnement
+│   ├── data_loader.py          # Chargement OCR / Excel / documents
+│   └── vector_store.py         # Création et interrogation de l'index FAISS
+├── docs/
+│   └── audit_initial.md        # Synthèse de l'audit initial
+└── notebooks/
+    └── audit.ipynb             # Notebook d'audit initial
+```
+
+Le dossier `vector_db/` est généré localement par `python indexer.py`. Il n'est pas versionné car il peut être reconstruit à partir des fichiers présents dans `inputs/`.
 
 ## Prérequis
 
-- Python 3.9+ 
-- Clé API Mistral (obtenue sur [console.mistral.ai](https://console.mistral.ai/))
+- Python 3.9 ou supérieur ;
+- une clé API Mistral ;
+- les dépendances listées dans `requirements.txt`.
 
 ## Installation
 
-1. **Cloner le dépôt**
+Créer et activer un environnement virtuel :
 
 ```bash
-git clone <url-du-repo>
-cd <nom-du-repo>
+python -m venv .venv
+source .venv/bin/activate
 ```
 
-2. **Créer un environnement virtuel**
-
-```bash
-# Création de l'environnement virtuel
-python -m venv venv
-
-# Activation de l'environnement virtuel
-# Sur Windows
-venv\Scripts\activate
-# Sur macOS/Linux
-source venv/bin/activate
-```
-
-3. **Installer les dépendances**
+Installer les dépendances :
 
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Configurer la clé API**
+Créer un fichier `.env` à partir du modèle :
 
-Créez un fichier `.env` à la racine du projet avec le contenu suivant :
-
-```
-MISTRAL_API_KEY=votre_clé_api_mistral
+```bash
+cp .env.example .env
 ```
 
-## Structure du projet
+Renseigner la clé Mistral dans `.env` :
 
-```
-.
-├── MistralChat.py          # Application Streamlit principale
-├── indexer.py              # Script pour indexer les documents
-├── inputs/                 # Dossier pour les documents sources
-├── vector_db/              # Dossier pour l'index FAISS et les chunks
-├── database/               # Base de données SQLite pour les interactions
-└── utils/                  # Modules utilitaires
-    ├── config.py           # Configuration de l'application
-    ├── database.py         # Gestion de la base de données
-    └── vector_store.py     # Gestion de l'index vectoriel
-
+```env
+MISTRAL_API_KEY=your_mistral_api_key_here
 ```
 
-## Utilisation
+## Indexation des documents
 
-### 1. Ajouter des documents
-
-Placez vos documents dans le dossier `inputs/`. Les formats supportés sont :
-- PDF
-- TXT
-- DOCX
-- CSV
-- JSON
-
-Vous pouvez organiser vos documents dans des sous-dossiers pour une meilleure organisation.
-
-### 2. Indexer les documents
-
-Exécutez le script d'indexation pour traiter les documents et créer l'index FAISS :
+Lancer l'indexation :
 
 ```bash
 python indexer.py
 ```
 
-Ce script va :
-1. Charger les documents depuis le dossier `inputs/`
-2. Découper les documents en chunks
-3. Générer des embeddings avec Mistral
-4. Créer un index FAISS pour la recherche sémantique
-5. Sauvegarder l'index et les chunks dans le dossier `vector_db/`
+Cette commande lit les documents du dossier `inputs/`, extrait leur contenu, génère les embeddings Mistral et construit l'index FAISS local dans `vector_db/`.
 
-### 3. Lancer l'application
+Lors du dernier audit, l'indexation a produit **302 chunks**.
+
+## Lancement de l'application
 
 ```bash
 streamlit run MistralChat.py
 ```
 
-L'application sera accessible à l'adresse http://localhost:8501 dans votre navigateur.
+L'application est ensuite accessible sur :
 
+```text
+http://localhost:8501
+```
 
-## Modules principaux
+## Audit initial
 
-### `utils/vector_store.py`
+L'audit initial est disponible dans :
 
-Gère l'index vectoriel FAISS et la recherche sémantique :
-- Chargement et découpage des documents
-- Génération des embeddings avec Mistral
-- Création et interrogation de l'index FAISS
+- `notebooks/audit.ipynb` ;
+- `docs/audit_initial.md`.
 
-### `utils/query_classifier.py`
+Il vérifie le fonctionnement des principaux composants : dépendances, données, index FAISS, API Mistral, recherche vectorielle et pipeline RAG complet.
 
-Détermine si une requête nécessite une recherche RAG :
-- Analyse des mots-clés
-- Classification avec le modèle Mistral
-- Détection des questions spécifiques vs générales
+L'audit montre que l'application fonctionne techniquement, mais que les questions chiffrées restent une limite importante. Le système récupère des chunks proches dans l'index FAISS, puis le modèle reformule une réponse sans calcul structuré sur les données Excel.
 
-### `utils/database.py`
+Exemple observé : le modèle peut répondre **Shai Gilgeous-Alexander — 37,5 %** à la question du meilleur pourcentage à 3 points, alors qu'un extrait contient déjà **Nikola Jokić — 41,7 %**. Cela montre que la recherche vectorielle seule ne calcule pas réellement le maximum d'une colonne.
 
-Gère la base de données SQLite pour les interactions :
-- Enregistrement des questions et réponses
-- Stockage des feedbacks utilisateurs
-- Récupération des statistiques
+## Limites connues
 
-## Personnalisation
+- Les PDF Reddit sont extraits par OCR, ce qui peut introduire du bruit dans le texte.
+- Le fichier Excel est indexé comme du texte brut, ce qui limite les calculs statistiques fiables.
+- Les réponses peuvent être plausibles mais insuffisamment ancrées dans les sources.
+- Les questions numériques nécessitent un traitement structuré complémentaire.
 
-Vous pouvez personnaliser l'application en modifiant les paramètres dans `utils/config.py` :
-- Modèles Mistral utilisés
-- Taille des chunks et chevauchement
-- Nombre de documents par défaut
-- Nom de la commune ou organisation
+## Commandes utiles
 
+```bash
+# Activer l'environnement
+source .venv/bin/activate
+
+# Installer les dépendances
+pip install -r requirements.txt
+
+# Reconstruire l'index FAISS
+python indexer.py
+
+# Lancer l'application
+streamlit run MistralChat.py
+```
