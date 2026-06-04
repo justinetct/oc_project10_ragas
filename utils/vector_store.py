@@ -42,6 +42,15 @@ class VectorStoreManager:
         else:
             logging.warning("Fichiers d'index Faiss ou de chunks non trouvés. L'index est vide.")
 
+    def load_index(self) -> bool:
+        """Charge l'index FAISS et les chunks depuis le disque.
+
+        Retourne True si l'index ET les chunks ont été chargés, False sinon
+        (fichiers absents ou illisibles). Ne lève pas d'exception.
+        """
+        self._load_index_and_chunks()
+        return self.index is not None and bool(self.document_chunks)
+
     def _split_documents_to_chunks(self, documents: List[Dict[str, any]]) -> List[Dict[str, any]]:
         """Découpe les documents en chunks avec métadonnées."""
         logging.info(f"Découpage de {len(documents)} documents en chunks (taille={CHUNK_SIZE}, chevauchement={CHUNK_OVERLAP})...")
