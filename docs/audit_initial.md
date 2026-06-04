@@ -58,6 +58,8 @@ streamlit run MistralChat.py
 2. **Modules mentionnés dans le README mais absents** : `utils/database.py` et `utils/query_classifier.py` sont documentés dans le README mais n'existent pas dans le code. Le README décrit un projet plus complet que le prototype actuel.
 
 > Le notebook `notebooks/audit.ipynb` ne fait **pas** partie des sources de l'énoncé.
+>
+> **Mise à jour (migration) :** le projet et le notebook utilisent désormais **Poetry** pour gérer les dépendances et la **dernière version du SDK `mistralai` (1.x)** à la place de l'ancien `0.4.2`. Le notebook s'exécute via le kernel Jupyter de l'environnement Poetry (et non plus l'ancien `.venv` pip).
 
 ### Données et qualité RAG
 
@@ -68,3 +70,4 @@ streamlit run MistralChat.py
     -> Résultat : sur les questions chiffrées (ex. « meilleur 3P% », « rebonds domicile vs extérieur »), le LLM produit des réponses confiantes **à partir de ses connaissances d'entraînement**, alors que ces chiffres ne sont **pas présents dans les données**. 
 
 4. **Le RAG reformule, il ne calcule pas** : même lorsque le modèle cite une source existante, la réponse peut rester incorrecte. Par exemple, il répond Shai Gilgeous-Alexander pour le meilleur 3P%, alors que l'extrait affiché contient déjà Nikola Jokić à 41,7%. Le système ne calcule pas réellement le maximum de la colonne `3P%` : il reformule un chunk récupéré. Cela confirme le besoin d'un accès structuré aux données Excel via SQL.
+5. **Pas de garde-fou sur les questions hors-sujet** : le prompt permissif (« animer le débat ») n'interdit pas les sujets hors NBA. Testé avec « Quelle est la recette de la ratatouille ? », le LLM **refuse parfois, mais donne souvent la recette** (comportement non déterministe, même à température 0.1). Le test a été reproduit avec l'ancien SDK (`0.4.2`) et le nouveau (`1.x`) : résultat identique → ce comportement vient du **prompt et du modèle**, pas de la migration. Un garde-fou (consigne de refus explicite, ou classification de la requête) serait nécessaire.

@@ -1,0 +1,48 @@
+[tool.poetry]
+# Projet applicatif (pas une librairie) : on n'installe pas le projet lui-même,
+# seulement ses dépendances.
+name = "oc-project10-ragas"
+version = "0.1.0"
+description = "Projet 10 OpenClassrooms — Évaluez les performances d'un LLM (assistant RAG NBA avec Mistral)"
+authors = ["Projet 10 OpenClassrooms"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.14"
+
+# --- Application RAG / Streamlit ---
+streamlit = "^1.44"
+python-dotenv = "^1.0"
+mistralai = "^1.0"            # SDK Mistral récent (remplace l'ancien 0.4.2)
+faiss-cpu = "^1.10"
+langchain = "^0.3"
+langchain-core = "^0.3"
+pydantic = "^2.0"
+
+# --- Chargement / parsing des documents ---
+pandas = "^2.2"
+openpyxl = "^3.1"
+pillow = "^11.0"
+pymupdf = "^1.24"
+pypdf2 = "^3.0"
+python-docx = "^1.1"
+requests = "^2.32"
+tqdm = "^4.67"
+numpy = ">=1.26"
+
+# --- OCR ---
+easyocr = "^1.7"             # utilisé par le code actuel (utils/data_loader.py)
+pytesseract = "^0.3"         # prévu pour la suite (non utilisé dans le code pour l'instant)
+
+# --- Évaluation / observabilité (prévues, non encore utilisées dans le code) ---
+ragas = "*"
+logfire = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+ruff = ">=0.6"
+ipykernel = "^7.0"           # pour exécuter le notebook depuis l'environnement Poetry
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

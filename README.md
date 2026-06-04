@@ -21,7 +21,9 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 .
 ├── MistralChat.py              # Application Streamlit
 ├── indexer.py                  # Script d'indexation des documents
-├── requirements.txt            # Dépendances Python
+├── pyproject.toml              # Dépendances et configuration Poetry
+├── poetry.lock                 # Versions verrouillées (reproductibilité)
+├── requirements.txt            # Ancien fichier pip, conservé temporairement pendant la migration
 ├── .env.example                # Exemple de configuration sans clé réelle
 ├── inputs/                     # Documents sources
 │   ├── Reddit 1.pdf
@@ -43,23 +45,16 @@ Le dossier `vector_db/` est généré localement par `python indexer.py`. Il n'e
 
 ## Prérequis
 
-- Python 3.9 ou supérieur ;
-- une clé API Mistral ;
-- les dépendances listées dans `requirements.txt`.
+- Python 3.11 ou supérieur ;
+- [Poetry](https://python-poetry.org/) pour la gestion des dépendances ;
+- une clé API Mistral.
 
 ## Installation
 
-Créer et activer un environnement virtuel :
+Installer les dépendances avec Poetry (crée automatiquement un environnement virtuel) :
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-```
-
-Installer les dépendances :
-
-```bash
-pip install -r requirements.txt
+poetry install
 ```
 
 Créer un fichier `.env` à partir du modèle :
@@ -74,12 +69,14 @@ Renseigner la clé Mistral dans `.env` :
 MISTRAL_API_KEY=your_mistral_api_key_here
 ```
 
+> Note : l'ancien `requirements.txt` est conservé temporairement pendant la migration vers Poetry. La référence des dépendances est désormais `pyproject.toml` / `poetry.lock`.
+
 ## Indexation des documents
 
 Lancer l'indexation :
 
 ```bash
-python indexer.py
+poetry run python indexer.py
 ```
 
 Cette commande lit les documents du dossier `inputs/`, extrait leur contenu, génère les embeddings Mistral et construit l'index FAISS local dans `vector_db/`.
@@ -89,7 +86,7 @@ Lors du dernier audit, l'indexation a produit **302 chunks**.
 ## Lancement de l'application
 
 ```bash
-streamlit run MistralChat.py
+poetry run streamlit run MistralChat.py
 ```
 
 L'application est ensuite accessible sur :
@@ -121,15 +118,16 @@ Exemple observé : le modèle peut répondre **Shai Gilgeous-Alexander — 37,5 
 ## Commandes utiles
 
 ```bash
-# Activer l'environnement
-source .venv/bin/activate
-
 # Installer les dépendances
-pip install -r requirements.txt
+poetry install
 
 # Reconstruire l'index FAISS
-python indexer.py
+poetry run python indexer.py
 
 # Lancer l'application
-streamlit run MistralChat.py
+poetry run streamlit run MistralChat.py
+
+# Outils de développement
+poetry run ruff check .
+poetry run pytest
 ```
