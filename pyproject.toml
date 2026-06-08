@@ -34,14 +34,17 @@ numpy = ">=1.26"
 easyocr = "^1.7"             # utilisé par le code actuel (utils/data_loader.py)
 pytesseract = "^0.3"         # prévu pour la suite (non utilisé dans le code pour l'instant)
 
-# --- Évaluation / observabilité (prévues, non encore utilisées dans le code) ---
-ragas = "*"
+# --- Évaluation RAGAS (utilisées par evaluate_ragas.py) ---
+ragas = "^0.4"                 # épinglé : on garde l'API classique evaluate() (stable en 0.4.x)
+langchain-mistralai = "^0.2"   # branche Mistral (LLM + embeddings) sur RAGAS
+# --- Observabilité (prévue, non encore utilisée dans le code) ---
 logfire = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
 ruff = ">=0.6"
 ipykernel = "^7.0"           # pour exécuter le notebook depuis l'environnement Poetry
+matplotlib = "^3.10.9"       # graphiques du notebook d'illustration RAGAS
 
 # ─── Qualité de code ───────────────────────────────────────────────
 [tool.ruff]
@@ -55,6 +58,11 @@ extend-exclude = [".venv", "vector_db", "database", "notebooks", ".ipynb_checkpo
 #   F = pyflakes (imports inutilisés, noms non définis…), E/W = style pycodestyle.
 select = ["E", "F", "W"]
 ignore = ["E501"]  # longueur de ligne tolérée sur ce prototype
+
+[tool.ruff.lint.per-file-ignores]
+# evaluate_ragas.py fixe KMP_DUPLICATE_LIB_OK (faiss/macOS) et filtre un warning
+# de dépréciation RAGAS AVANT d'importer faiss/ragas : on tolère donc E402 ici.
+"evaluate_ragas.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

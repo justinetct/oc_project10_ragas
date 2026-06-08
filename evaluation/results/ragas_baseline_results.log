@@ -1,0 +1,79 @@
+=== Baseline RAGAS — prototype RAG NBA ===
+Clé API Mistral : présente (non affichée).
+2026-06-08 15:45:47,075 - INFO - Chargement de l'index Faiss depuis vector_db/faiss_index.idx...
+2026-06-08 15:45:47,075 - INFO - Chargement des chunks depuis vector_db/document_chunks.pkl...
+2026-06-08 15:45:47,076 - INFO - Index (302 vecteurs) et 302 chunks chargés.
+Index FAISS chargé : 302 vecteurs.
+Dataset chargé : 15 questions (evaluation/evaluation_questions.csv).
+Étape 1/3 : exécution du pipeline RAG (1 réponse par question)…
+  [1/15] E01 (simple) — exécution du RAG…
+2026-06-08 15:45:47,080 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Pour quelle équipe joue Nikola Jokić d'après les données de la saison ?'
+2026-06-08 15:45:47,286 - INFO - 5 chunks pertinents trouvés.
+  [2/15] E02 (simple) — exécution du RAG…
+2026-06-08 15:45:49,018 - INFO - Recherche des 5 chunks les plus pertinents pour: 'De quoi parlent les fans dans la discussion Reddit sur l'avantage du terrain jusqu'aux Finales NBA ?'
+2026-06-08 15:45:49,171 - INFO - 5 chunks pertinents trouvés.
+  [3/15] E03 (complexe) — exécution du RAG…
+2026-06-08 15:45:56,424 - INFO - Recherche des 5 chunks les plus pertinents pour: 'D'après les discussions Reddit, quels arguments pour et contre le tournoi play-in les fans avancent-ils ?'
+2026-06-08 15:45:56,674 - INFO - 5 chunks pertinents trouvés.
+  [4/15] E04 (complexe) — exécution du RAG…
+2026-06-08 15:46:02,152 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Compare les profils statistiques de Shai Gilgeous-Alexander et Nikola Jokić (scoring, efficacité, création de jeu).'
+2026-06-08 15:46:02,374 - INFO - 5 chunks pertinents trouvés.
+  [5/15] E05 (mixte) — exécution du RAG…
+2026-06-08 15:46:12,599 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quel joueur a délivré le plus de passes décisives, et qu'est-ce que cela révèle de son rôle ?'
+2026-06-08 15:46:13,216 - INFO - 5 chunks pertinents trouvés.
+  [6/15] E06 (mixte) — exécution du RAG…
+2026-06-08 15:46:18,148 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Qui a capté le plus de rebonds cette saison, et pourquoi est-ce un atout pour son équipe ?'
+2026-06-08 15:46:18,356 - INFO - 5 chunks pertinents trouvés.
+  [7/15] E07 (chiffree) — exécution du RAG…
+2026-06-08 15:46:24,908 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quel joueur a le meilleur pourcentage à 3 points (3P%) cette saison ?'
+2026-06-08 15:46:25,992 - INFO - 5 chunks pertinents trouvés.
+  [8/15] E08 (chiffree) — exécution du RAG…
+2026-06-08 15:46:27,597 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quel joueur a marqué le plus de points sur l'ensemble de la saison ?'
+2026-06-08 15:46:27,769 - INFO - 5 chunks pertinents trouvés.
+  [9/15] E09 (chiffree) — exécution du RAG…
+2026-06-08 15:46:30,211 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quelle équipe a marqué le plus de points au total cette saison ?'
+2026-06-08 15:46:30,396 - INFO - 5 chunks pertinents trouvés.
+  [10/15] E10 (chiffree) — exécution du RAG…
+2026-06-08 15:46:32,872 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quel est le joueur le plus âgé du jeu de données, et quel âge a-t-il ?'
+2026-06-08 15:46:33,045 - INFO - 5 chunks pertinents trouvés.
+  [11/15] E11 (chiffree) — exécution du RAG…
+2026-06-08 15:46:35,108 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Compare les rebonds à domicile et à l'extérieur des équipes sur leurs 5 derniers matchs.'
+2026-06-08 15:46:35,361 - INFO - 5 chunks pertinents trouvés.
+  [12/15] E12 (bruitee) — exécution du RAG…
+2026-06-08 15:46:40,759 - INFO - Recherche des 5 chunks les plus pertinents pour: 'kl vs okc stts rebnd lst 5 gm??'
+2026-06-08 15:46:41,057 - INFO - 5 chunks pertinents trouvés.
+  [13/15] E13 (bruitee) — exécution du RAG…
+2026-06-08 15:46:44,832 - INFO - Recherche des 5 chunks les plus pertinents pour: 'meilleur tireur a 3pts cette saion?? mrci'
+2026-06-08 15:46:46,513 - INFO - 5 chunks pertinents trouvés.
+  [14/15] E14 (hors_sujet) — exécution du RAG…
+2026-06-08 15:46:53,517 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quelle est la recette de la ratatouille ?'
+2026-06-08 15:46:53,980 - INFO - 5 chunks pertinents trouvés.
+  [15/15] E15 (hors_sujet) — exécution du RAG…
+2026-06-08 15:46:55,140 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Donne-moi le score du match de football PSG - OM de ce week-end.'
+2026-06-08 15:46:55,377 - INFO - 5 chunks pertinents trouvés.
+Étape 2/3 : évaluation RAGAS — 15 questions × 4 métriques = 60 jobs (juge mistral-large-latest, max_workers=1)…
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-06-08 15:46:56,605 - WARNING - Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Evaluating: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 60/60 [34:37<00:00, 34.63s/it]
+Étape 3/3 : fusion des scores et écriture des résultats…
+
+=== Résultats baseline (4 métriques RAGAS) ===
+Questions évaluées : 15/15
+Scores notés par métrique : {'faithfulness': 15, 'answer_relevancy': 15, 'context_precision': 15, 'context_recall': 15}
+Scores moyens :
+  - faithfulness       0.1844
+  - answer_relevancy   0.614
+  - context_precision  0.4378
+  - context_recall     0.4667
+Scores moyens par catégorie :
+  - bruitee     {'faithfulness': 0.0, 'answer_relevancy': 0.7349, 'context_precision': 0.0, 'context_recall': 0.25}
+  - chiffree    {'faithfulness': 0.2255, 'answer_relevancy': 0.5586, 'context_precision': 0.6833, 'context_recall': 0.4}
+  - complexe    {'faithfulness': 0.5078, 'answer_relevancy': 0.858, 'context_precision': 0.35, 'context_recall': 0.75}
+  - hors_sujet  {'faithfulness': 0.0, 'answer_relevancy': 0.0, 'context_precision': 0.0, 'context_recall': 0.5}
+  - mixte       {'faithfulness': 0.0376, 'answer_relevancy': 0.7487, 'context_precision': 0.3084, 'context_recall': 0.0}
+  - simple      {'faithfulness': 0.2738, 'answer_relevancy': 0.867, 'context_precision': 0.9166, 'context_recall': 1.0}
+
+429 de capacité Mistral absorbés par retry : 196 (les résultats restent corrects).
+
+Résultats détaillés : evaluation/results/ragas_baseline_results.csv
+Résumé              : evaluation/results/ragas_baseline_summary.json

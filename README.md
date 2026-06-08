@@ -9,13 +9,13 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 - [Structure du dépôt](#structure-du-dépôt)
 - [Prérequis](#prérequis)
 - [Installation](#installation)
-- [Indexation des documents](#indexation-des-documents)
-- [Lancement de l'application](#lancement-de-lapplication)
-- [Dataset d'évaluation](#dataset-dévaluation)
-- [Audit initial](#audit-initial)
-- [Limites connues](#limites-connues)
 - [Qualité de code](#qualité-de-code)
 - [Commandes utiles](#commandes-utiles)
+- [Indexation des documents](#indexation-des-documents)
+- [Lancement de l'application](#lancement-de-lapplication)
+- [Audit initial](#audit-initial)
+- [Dataset d'évaluation](#dataset-dévaluation)
+- [Baseline RAGAS](#baseline-ragas)
 
 ## Structure du dépôt
 
@@ -25,7 +25,7 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 │   └── audit_initial.md         # Synthèse de l'audit initial
 ├── evaluation/
 │   ├── evaluation_questions.csv # Dataset d'évaluation versionné
-│   └── README.md                # Description courte du dataset
+│   └── results/                 # Résultats de la baseline RAGAS
 ├── inputs/                      # Documents sources
 │   ├── Reddit 1.pdf
 │   ├── Reddit 2.pdf
@@ -33,7 +33,8 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 │   ├── Reddit 4.pdf
 │   └── regular NBA.xlsx
 ├── notebooks/
-│   └── audit.ipynb              # Notebook d'audit initial
+│   ├── audit.ipynb              # Notebook d'audit initial
+│   └── ragas_baseline_results.ipynb  # Illustration de la baseline RAGAS
 ├── tests/                       # Tests qualité et validation
 ├── utils/
 │   ├── config.py                # Configuration des chemins et variables d'environnement
@@ -41,6 +42,7 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 │   └── vector_store.py          # Création et interrogation de l'index FAISS
 ├── .env.example                 # Exemple de configuration sans clé réelle
 ├── .gitignore                   # Fichiers locaux exclus du versionnement
+├── evaluate_ragas.py            # Baseline RAGAS du prototype sur le dataset
 ├── indexer.py                   # Script d'indexation des documents
 ├── MistralChat.py               # Application Streamlit
 ├── poetry.lock                  # Versions verrouillées (reproductibilité)
@@ -51,6 +53,7 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 
 Le dossier `vector_db/` est généré localement par `python indexer.py`. Il n'est pas versionné car il peut être reconstruit à partir des fichiers présents dans `inputs/`.
 
+---
 ## Prérequis
 
 - Python 3.11 ou supérieur ;
@@ -59,7 +62,7 @@ Le dossier `vector_db/` est généré localement par `python indexer.py`. Il n'e
 
 ## Installation
 
-Installer les dépendances avec Poetry (crée automatiquement un environnement virtuel) :
+Installer les dépendances avec Poetry :
 
 ```bash
 poetry install
@@ -78,6 +81,47 @@ MISTRAL_API_KEY=your_mistral_api_key_here
 ```
 
 > Note : l'ancien `requirements.txt` est conservé temporairement pendant la migration vers Poetry. La référence des dépendances est désormais `pyproject.toml` / `poetry.lock`.
+
+## Qualité de code
+
+Trois contrôles simples permettent d'éviter de casser le prototype entre deux itérations :
+
+```bash
+# Compilation : vérifie la syntaxe de tous les modules
+poetry run python -m compileall MistralChat.py indexer.py utils notebooks tests evaluate_ragas.py
+
+# Linter
+poetry run ruff check .
+
+# Tests qualité et validation (sans appel API ni OCR)
+poetry run pytest
+```
+
+Les tests du dossier `tests/` sont légers : ils vérifient la configuration, la présence des fichiers d'entrée, la structure du dataset d'évaluation, l'import des modules sans effet de bord et quelques comportements de non-régression du vector store. Ils ne déclenchent **aucun** appel à l'API Mistral, ni l'OCR, ni la reconstruction de l'index FAISS.
+
+Tests actuellement présents :
+
+- `test_config.py` — configuration et chemins principaux ;
+- `test_inputs.py` — présence des documents sources ;
+- `test_imports.py` — imports sans appel API ni OCR ;
+- `test_vector_store.py` — chargement absent de l'index et structure des chunks ;
+- `test_evaluation_dataset.py` — structure du dataset d'évaluation.
+
+## Commandes utiles
+
+```bash
+# Installer les dépendances
+poetry install
+
+# Reconstruire l'index FAISS
+poetry run python indexer.py
+
+# Lancer l'application
+poetry run streamlit run MistralChat.py
+
+# Lancer la baseline RAGAS
+poetry run python evaluate_ragas.py
+```
 
 ## Indexation des documents
 
@@ -103,16 +147,7 @@ L'application est ensuite accessible sur :
 http://localhost:8501
 ```
 
-## Dataset d'évaluation
-
-Le fichier `evaluation/evaluation_questions.csv` contient le jeu de questions utilisé pour évaluer l'assistant RAG.
-
-Chaque ligne correspond à une question, avec sa catégorie, le comportement attendu, une réponse de référence courte, une indication de source et un champ `requires_sql_future`.
-
-Le dataset couvre plusieurs cas : questions simples, complexes, chiffrées, mixtes, bruitées et hors sujet. Il sert de base stable pour comparer la baseline RAGAS avec la future version améliorée par SQL.
-
-*Une fois la baseline calculée, ce fichier ne doit plus être modifié.*
-
+---
 ## Audit initial
 
 L'audit initial est disponible dans :
@@ -126,48 +161,58 @@ L'audit montre que l'application fonctionne techniquement, mais que les question
 
 Exemple observé : le modèle peut répondre **Shai Gilgeous-Alexander — 37,5 %** à la question du meilleur pourcentage à 3 points, alors qu'un extrait contient déjà **Nikola Jokić — 41,7 %**. Cela montre que la recherche vectorielle seule ne calcule pas réellement le maximum d'une colonne.
 
-## Limites connues
+### Limites 
 
 - Les PDF Reddit sont extraits par OCR, ce qui peut introduire du bruit dans le texte.
 - Le fichier Excel est indexé comme du texte brut, ce qui limite les calculs statistiques fiables.
 - Les réponses peuvent être plausibles mais insuffisamment ancrées dans les sources.
 - Les questions numériques nécessitent un traitement structuré complémentaire.
 
-## Qualité de code
+---
+## Dataset d'évaluation
 
-Trois contrôles simples permettent d'éviter de casser le prototype entre deux itérations :
+Le fichier `evaluation/evaluation_questions.csv` contient le jeu de questions utilisé pour évaluer l'assistant RAG.
 
-```bash
-# Compilation : vérifie la syntaxe de tous les modules
-poetry run python -m compileall MistralChat.py indexer.py utils notebooks tests
+Chaque ligne correspond à une question, avec sa catégorie, le comportement attendu, une réponse de référence courte, une indication de source et un champ `requires_sql_future`.
 
-# Linter
-poetry run ruff check .
+Le dataset couvre plusieurs cas : questions simples, complexes, chiffrées, mixtes, bruitées et hors sujet. Il sert de base stable pour comparer la baseline RAGAS avec la future version améliorée par SQL.
 
-# Tests de non-régression (sans appel API ni OCR)
-poetry run pytest
-```
+*Une fois la baseline calculée, ce fichier ne doit plus être modifié.*
 
-Les tests du dossier `tests/` sont légers : ils vérifient la configuration, la présence des fichiers d'entrée, la structure du dataset d'évaluation, l'import des modules sans effet de bord et quelques comportements de non-régression du vector store. Ils ne déclenchent **aucun** appel à l'API Mistral, ni l'OCR, ni la reconstruction de l'index FAISS.
+---
+## Baseline RAGAS
 
-Tests actuellement présents :
-
-- `test_config.py` — configuration et chemins principaux ;
-- `test_inputs.py` — présence des documents sources ;
-- `test_imports.py` — imports sans appel API ni OCR ;
-- `test_vector_store.py` — chargement absent de l'index et structure des chunks ;
-- `test_evaluation_dataset.py` — structure du dataset d'évaluation.
-
-## Commandes utiles
+Le script `evaluate_ragas.py` évalue l'assistant RAG sur le dataset figé.
 
 ```bash
-# Installer les dépendances
-poetry install
-
-# Reconstruire l'index FAISS
-poetry run python indexer.py
-
-# Lancer l'application
-poetry run streamlit run MistralChat.py
+poetry run python evaluate_ragas.py
 ```
+
+Prérequis : un fichier `.env` avec `MISTRAL_API_KEY` et un index FAISS déjà construit (`poetry run python indexer.py`).
+
+Les métriques utilisées sont :
+
+- `faithfulness` — la réponse est-elle ancrée dans les contextes récupérés ?
+- `answer_relevancy` — la réponse répond-elle réellement à la question ?
+- `context_precision` — les contextes récupérés sont-ils pertinents au regard de la référence ?
+- `context_recall` — la référence est-elle couverte par les contextes récupérés ?
+
+
+Les résultats sont écrits dans `evaluation/results/` :
+
+- `ragas_baseline_results.csv` — résultats détaillés par question ;
+- `ragas_baseline_summary.json` — synthèse globale et par catégorie.
+
+Le notebook `notebooks/ragas_baseline_results.ipynb` permet de visualiser ces résultats sans relancer l'évaluation.
+
+Scores moyens de la baseline actuelle :
+
+| Métrique | Score moyen |
+|---|---:|
+| `faithfulness` | 0,18 |
+| `answer_relevancy` | 0,61 |
+| `context_precision` | 0,44 |
+| `context_recall` | 0,47 |
+
+La faible `faithfulness` confirme que les réponses restent insuffisamment ancrées dans les sources.
 

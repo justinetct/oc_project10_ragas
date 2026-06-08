@@ -30,6 +30,30 @@ EMBEDDING_BATCH_SIZE = 32           # Taille des lots pour l'API d'embedding
 # --- Configuration de la Recherche ---
 SEARCH_K = 5                        # Nombre de documents à récupérer par défaut
 
+# --- Configuration de l'évaluation RAGAS ---
+EVALUATION_DIR = "evaluation"
+EVALUATION_DATASET_FILE = os.path.join(EVALUATION_DIR, "evaluation_questions.csv")
+EVALUATION_RESULTS_DIR = os.path.join(EVALUATION_DIR, "results")
+RAGAS_BASELINE_RESULTS_FILE = os.path.join(EVALUATION_RESULTS_DIR, "ragas_baseline_results.csv")
+RAGAS_BASELINE_SUMMARY_FILE = os.path.join(EVALUATION_RESULTS_DIR, "ragas_baseline_summary.json")
+
+RAGAS_JUDGE_MODEL = "mistral-large-latest"
+RAGAS_METRIC_COLUMNS = [
+    "faithfulness",
+    "answer_relevancy",
+    "context_precision",
+    "context_recall",
+]
+RAGAS_ANSWER_RELEVANCY_STRICTNESS = 1
+RAGAS_MAX_WORKERS = 1
+RAGAS_REQUESTS_PER_SECOND = 0.2
+RAGAS_TIMEOUT_SECONDS = 300
+RAGAS_MAX_RETRIES = 15
+RAGAS_MAX_WAIT_SECONDS = 90
+
+# None = évaluation complète. Entier N = run partiel sur les N premières questions.
+RAGAS_LIMIT_QUESTIONS = None
+
 # --- Configuration de la Base de Données ---
 DATABASE_DIR = "database"
 DATABASE_FILE = os.path.join(DATABASE_DIR, "interactions.db")

@@ -32,6 +32,10 @@ vector_db/
 # Database (artefact local)
 database/
 
+# RAGAS — résultats partiels (checkpoints de test rapide, non versionnés)
+evaluation/results/ragas_baseline_results_partial.csv
+evaluation/results/ragas_baseline_summary_partial.json
+
 # Streamlit
 .streamlit/
 
