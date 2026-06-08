@@ -10,6 +10,7 @@ Contraintes respectées :
 import pytest
 
 import utils.vector_store as vs
+from utils.schemas import DocumentChunk, RetrievedChunk
 
 
 @pytest.fixture
@@ -50,3 +51,29 @@ def test_chunk_structure_has_expected_keys(manager):
     assert isinstance(first["text"], str) and first["text"].strip()
     # La source est conservée dans les métadonnées du chunk.
     assert first["metadata"]["source"] == "fake.txt"
+
+
+def test_chunks_are_pydantic_compatible(manager):
+    # Les chunks produits restent compatibles avec les modèles Pydantic.
+    fake_docs = [
+        {
+            "page_content": "Texte de test sur la NBA et les statistiques. " * 60,
+            "metadata": {"source": "fake.txt", "filename": "fake.txt", "category": "root"},
+        }
+    ]
+    chunks = manager._split_documents_to_chunks(fake_docs)
+    first = chunks[0]
+
+    # Un chunk est un dict reconstructible en DocumentChunk (et inversement).
+    assert DocumentChunk(**first).model_dump() == first
+
+    # On peut construire un RetrievedChunk à partir d'un chunk, comme dans search().
+    retrieved = RetrievedChunk(
+        id=first["id"],
+        text=first["text"],
+        source=first["metadata"]["source"],
+        score=88.0,
+        metadata=first["metadata"],
+    )
+    assert retrieved.source == "fake.txt"
+    assert set(retrieved.model_dump().keys()) == {"id", "text", "source", "score", "metadata"}

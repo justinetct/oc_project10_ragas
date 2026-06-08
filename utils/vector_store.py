@@ -13,6 +13,7 @@ from .config import (
     MISTRAL_API_KEY, EMBEDDING_MODEL, EMBEDDING_BATCH_SIZE,
     FAISS_INDEX_FILE, DOCUMENT_CHUNKS_FILE, CHUNK_SIZE, CHUNK_OVERLAP
 )
+from .schemas import DocumentInput, DocumentChunk, RetrievedChunk
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -64,23 +65,31 @@ class VectorStoreManager:
         all_chunks = []
         doc_counter = 0
         for doc in documents:
+            # Validation du document source : contenu et source non vides, metadata dict.
+            DocumentInput(
+                text=doc["page_content"],
+                source=doc["metadata"].get("source", ""),
+                metadata=doc["metadata"],
+            )
             # Convertit notre format de document en format Langchain Document pour le splitter
             langchain_doc = Document(page_content=doc["page_content"], metadata=doc["metadata"])
             chunks = text_splitter.split_documents([langchain_doc])
             logging.info(f"  Document '{doc['metadata'].get('filename', 'N/A')}' découpé en {len(chunks)} chunks.")
 
-            # Enrichit chaque chunk avec des métadonnées supplémentaires
+            # Enrichit chaque chunk avec des métadonnées supplémentaires.
+            # On valide la structure via le modèle Pydantic DocumentChunk, puis on
+            # stocke un simple dict (model_dump) pour ne rien changer en aval.
             for i, chunk in enumerate(chunks):
-                chunk_dict = {
-                    "id": f"{doc_counter}_{i}", # Identifiant unique du chunk (doc_index_chunk_index)
-                    "text": chunk.page_content,
-                    "metadata": {
-                        **chunk.metadata, # Métadonnées héritées du document (source, category, etc.)
-                        "chunk_id_in_doc": i, # Position du chunk dans son document d'origine
-                        "start_index": chunk.metadata.get("start_index", -1) # Position de début (en caractères)
-                    }
-                }
-                all_chunks.append(chunk_dict)
+                document_chunk = DocumentChunk(
+                    id=f"{doc_counter}_{i}",  # Identifiant unique (doc_index_chunk_index)
+                    text=chunk.page_content,
+                    metadata={
+                        **chunk.metadata,  # Métadonnées héritées du document (source, category, etc.)
+                        "chunk_id_in_doc": i,  # Position du chunk dans son document d'origine
+                        "start_index": chunk.metadata.get("start_index", -1),  # Position de début (caractères)
+                    },
+                )
+                all_chunks.append(document_chunk.model_dump())
             doc_counter += 1
 
         logging.info(f"Total de {len(all_chunks)} chunks créés.")
@@ -252,12 +261,16 @@ class VectorStoreManager:
                             logging.debug(f"Document filtré (score {similarity:.2f}% < minimum {min_score_percent:.2f}%)")
                             continue
 
-                        results.append({
-                            "score": similarity, # Score de similarité en pourcentage
-                            "raw_score": raw_score, # Score brut pour débogage
-                            "text": chunk["text"],
-                            "metadata": chunk["metadata"] # Contient source, category, chunk_id_in_doc, start_index etc.
-                        })
+                        # On valide le résultat via le modèle RetrievedChunk, puis on
+                        # retourne un dict (model_dump) : MistralChat attend des dicts.
+                        retrieved = RetrievedChunk(
+                            id=chunk["id"],
+                            text=chunk["text"],
+                            source=chunk["metadata"].get("source", "inconnue"),
+                            score=similarity,  # score de similarité en pourcentage (0-100)
+                            metadata=chunk["metadata"],  # source, category, chunk_id_in_doc, start_index…
+                        )
+                        results.append(retrieved.model_dump())
                     else:
                         logging.warning(f"Index Faiss {idx} hors limites (taille des chunks: {len(self.document_chunks)}).")
 

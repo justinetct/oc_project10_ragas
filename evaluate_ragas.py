@@ -42,6 +42,7 @@ import logging
 import datetime
 
 from mistralai import Mistral
+from pydantic import ValidationError
 
 from utils.config import (
     MISTRAL_API_KEY, MODEL_NAME, EMBEDDING_MODEL, SEARCH_K,
@@ -53,6 +54,7 @@ from utils.config import (
     RAGAS_MAX_RETRIES, RAGAS_MAX_WAIT_SECONDS, RAGAS_LIMIT_QUESTIONS,
 )
 from utils.vector_store import VectorStoreManager
+from utils.schemas import RagAnswer
 
 import ragas
 from ragas import evaluate, EvaluationDataset, RunConfig
@@ -149,6 +151,11 @@ def run_rag_for_question(question, manager, client):
     )
     answer = response.choices[0].message.content
     retrieved_contexts = [r["text"] for r in results]
+    # Validation Pydantic de la réponse RAG (ne change pas ce qui est retourné).
+    try:
+        RagAnswer(question=question, answer=answer, retrieved_contexts=results)
+    except ValidationError as exc:
+        logging.warning(f"Réponse RAG non conforme au schéma RagAnswer : {exc}")
     return {"answer": answer, "retrieved_contexts": retrieved_contexts}
 
 

@@ -2,6 +2,7 @@
 import streamlit as st
 import logging
 from mistralai import Mistral
+from pydantic import ValidationError
 
 # --- Importations depuis vos modules ---
 try:
@@ -10,6 +11,7 @@ try:
         APP_TITLE, NAME
     )
     from utils.vector_store import VectorStoreManager
+    from utils.schemas import RagAnswer
 except ImportError as e:
     st.error(f"Erreur d'importation: {e}. Vérifiez la structure de vos dossiers et les fichiers dans 'utils'.")
     st.stop()
@@ -176,6 +178,12 @@ if prompt := st.chat_input(f"Posez votre question sur la {NAME}..."):
 
         # Génération de la réponse de l'assistant en utilisant le prompt augmenté
         response_content = generer_reponse(messages_for_api)
+
+        # Validation Pydantic de la réponse finale (ne change ni l'affichage ni le contenu).
+        try:
+            RagAnswer(question=prompt, answer=response_content, retrieved_contexts=search_results)
+        except ValidationError as e:
+            logging.warning(f"Réponse RAG non conforme au schéma RagAnswer : {e}")
 
         # Affichage de la réponse complète
         message_placeholder.write(response_content)
