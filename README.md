@@ -4,41 +4,49 @@ Assistant d'analyse NBA basé sur une approche RAG (*Retrieval-Augmented Generat
 
 L'application permet d'interroger des sources documentaires NBA mixtes : archives Reddit extraites par OCR, documents PDF et fichier Excel de statistiques. Les documents sont indexés dans FAISS, puis interrogés via une interface Streamlit et un modèle Mistral.
 
-## Fonctionnalités
+## Sommaire
 
-- chargement de documents depuis `inputs/` ;
-- extraction OCR des PDF Reddit ;
-- lecture d'un fichier Excel de statistiques NBA ;
-- génération d'embeddings avec Mistral ;
-- création d'un index FAISS local ;
-- recherche vectorielle dans les documents ;
-- génération de réponses avec Mistral ;
-- interface utilisateur Streamlit.
+- [Structure du dépôt](#structure-du-dépôt)
+- [Prérequis](#prérequis)
+- [Installation](#installation)
+- [Indexation des documents](#indexation-des-documents)
+- [Lancement de l'application](#lancement-de-lapplication)
+- [Dataset d'évaluation](#dataset-dévaluation)
+- [Audit initial](#audit-initial)
+- [Limites connues](#limites-connues)
+- [Qualité de code](#qualité-de-code)
+- [Commandes utiles](#commandes-utiles)
 
 ## Structure du dépôt
 
 ```text
 .
-├── MistralChat.py              # Application Streamlit
-├── indexer.py                  # Script d'indexation des documents
-├── pyproject.toml              # Dépendances et configuration Poetry
-├── poetry.lock                 # Versions verrouillées (reproductibilité)
-├── requirements.txt            # Ancien fichier pip, conservé temporairement pendant la migration
-├── .env.example                # Exemple de configuration sans clé réelle
-├── inputs/                     # Documents sources
+├── docs/
+│   └── audit_initial.md         # Synthèse de l'audit initial
+├── evaluation/
+│   ├── evaluation_questions.csv # Dataset d'évaluation versionné
+│   └── README.md                # Description courte du dataset
+├── inputs/                      # Documents sources
 │   ├── Reddit 1.pdf
 │   ├── Reddit 2.pdf
 │   ├── Reddit 3.pdf
 │   ├── Reddit 4.pdf
 │   └── regular NBA.xlsx
+├── notebooks/
+│   └── audit.ipynb              # Notebook d'audit initial
+├── tests/                       # Tests qualité et validation
 ├── utils/
-│   ├── config.py               # Configuration des chemins et variables d'environnement
-│   ├── data_loader.py          # Chargement OCR / Excel / documents
-│   └── vector_store.py         # Création et interrogation de l'index FAISS
-├── docs/
-│   └── audit_initial.md        # Synthèse de l'audit initial
-└── notebooks/
-    └── audit.ipynb             # Notebook d'audit initial
+│   ├── config.py                # Configuration des chemins et variables d'environnement
+│   ├── data_loader.py           # Chargement OCR / Excel / documents
+│   └── vector_store.py          # Création et interrogation de l'index FAISS
+├── .env.example                 # Exemple de configuration sans clé réelle
+├── .gitignore                   # Fichiers locaux exclus du versionnement
+├── indexer.py                   # Script d'indexation des documents
+├── MistralChat.py               # Application Streamlit
+├── poetry.lock                  # Versions verrouillées (reproductibilité)
+├── pyproject.toml               # Dépendances et configuration Poetry
+├── README.md                    # Documentation principale
+└── requirements.txt             # Ancien fichier pip, conservé temporairement pendant la migration
 ```
 
 Le dossier `vector_db/` est généré localement par `python indexer.py`. Il n'est pas versionné car il peut être reconstruit à partir des fichiers présents dans `inputs/`.
@@ -95,6 +103,16 @@ L'application est ensuite accessible sur :
 http://localhost:8501
 ```
 
+## Dataset d'évaluation
+
+Le fichier `evaluation/evaluation_questions.csv` contient le jeu de questions utilisé pour évaluer l'assistant RAG.
+
+Chaque ligne correspond à une question, avec sa catégorie, le comportement attendu, une réponse de référence courte, une indication de source et un champ `requires_sql_future`.
+
+Le dataset couvre plusieurs cas : questions simples, complexes, chiffrées, mixtes, bruitées et hors sujet. Il sert de base stable pour comparer la baseline RAGAS avec la future version améliorée par SQL.
+
+*Une fois la baseline calculée, ce fichier ne doit plus être modifié.*
+
 ## Audit initial
 
 L'audit initial est disponible dans :
@@ -130,7 +148,15 @@ poetry run ruff check .
 poetry run pytest
 ```
 
-Les tests du dossier `tests/` sont volontairement légers : ils vérifient la configuration, la présence des fichiers d'entrée et l'import des modules sans effet de bord. Ils ne déclenchent **aucun** appel à l'API Mistral, ni l'OCR, ni la reconstruction de l'index FAISS.
+Les tests du dossier `tests/` sont légers : ils vérifient la configuration, la présence des fichiers d'entrée, la structure du dataset d'évaluation, l'import des modules sans effet de bord et quelques comportements de non-régression du vector store. Ils ne déclenchent **aucun** appel à l'API Mistral, ni l'OCR, ni la reconstruction de l'index FAISS.
+
+Tests actuellement présents :
+
+- `test_config.py` — configuration et chemins principaux ;
+- `test_inputs.py` — présence des documents sources ;
+- `test_imports.py` — imports sans appel API ni OCR ;
+- `test_vector_store.py` — chargement absent de l'index et structure des chunks ;
+- `test_evaluation_dataset.py` — structure du dataset d'évaluation.
 
 ## Commandes utiles
 
@@ -145,4 +171,3 @@ poetry run python indexer.py
 poetry run streamlit run MistralChat.py
 ```
 
-Voir aussi la section **Qualité de code** ci-dessus (`compileall`, `ruff`, `pytest`).
