@@ -54,6 +54,18 @@ RAGAS_MAX_WAIT_SECONDS = 90
 # None = évaluation complète. Entier N = run partiel sur les N premières questions.
 RAGAS_LIMIT_QUESTIONS = None
 
+# --- Configuration de l'observabilité (Logfire, optionnelle) ---
+# Sans token (ni LOGFIRE_TOKEN, ni `logfire auth`), l'application reste en mode
+# local silencieux (rien n'est envoyé). Logfire ne doit jamais bloquer le pipeline.
+LOGFIRE_TOKEN = os.getenv("LOGFIRE_TOKEN")
+LOGFIRE_ENVIRONMENT = os.getenv("LOGFIRE_ENVIRONMENT", "local")
+LOGFIRE_ENABLED = bool(LOGFIRE_TOKEN)  # vrai si un token est présent dans l'environnement
+LOGFIRE_SERVICE_NAME = os.getenv("LOGFIRE_SERVICE_NAME", "oc-project10-rag")
+# Instance Logfire (par défaut l'instance EU du projet). Vide -> instance par défaut.
+LOGFIRE_BASE_URL = os.getenv("LOGFIRE_BASE_URL", "https://logfire-eu.pydantic.dev") or None
+# LOGFIRE_CONSOLE=true -> affiche AUSSI les traces dans le terminal (utile en démo).
+LOGFIRE_CONSOLE = os.getenv("LOGFIRE_CONSOLE", "").strip().lower() in ("1", "true", "yes")
+
 # --- Configuration de la Base de Données ---
 DATABASE_DIR = "database"
 DATABASE_FILE = os.path.join(DATABASE_DIR, "interactions.db")

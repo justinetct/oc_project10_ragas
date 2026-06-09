@@ -4,6 +4,7 @@ import pickle
 import faiss
 import numpy as np
 import logging
+import logfire
 from typing import List, Dict, Optional
 from mistralai import Mistral
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -287,8 +288,10 @@ class VectorStoreManager:
             else:
                 logging.info(f"{len(results)} chunks pertinents trouvés.")
 
+            logfire.info("recherche_vectorielle", query=query_text, k=k, n_results=len(results))
             return results
 
         except Exception as e:
             logging.error(f"Erreur inattendue lors de la recherche: {e}")
+            logfire.error("erreur_recherche_vectorielle", error=str(e))
             return []

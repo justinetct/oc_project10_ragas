@@ -41,6 +41,7 @@ import math
 import logging
 import datetime
 
+import logfire
 from mistralai import Mistral
 from pydantic import ValidationError
 
@@ -55,6 +56,7 @@ from utils.config import (
 )
 from utils.vector_store import VectorStoreManager
 from utils.schemas import RagAnswer
+from utils.observability import configure_logfire
 
 import ragas
 from ragas import evaluate, EvaluationDataset, RunConfig
@@ -165,7 +167,10 @@ def run_rag_inference(rows, manager, client):
     total = len(rows)
     for i, row in enumerate(rows, start=1):
         print(f"  [{i}/{total}] {row['id']} ({row['category']}) — exécution du RAG…")
-        rag = run_rag_for_question(row["question"], manager, client)
+        # Un span par question : la recherche et la génération (et les appels
+        # Mistral auto-tracés) sont regroupés sous ce span dans Logfire.
+        with logfire.span("rag_question {question_id}", question_id=row["id"], category=row["category"]):
+            rag = run_rag_for_question(row["question"], manager, client)
         records.append({
             "id": row["id"],
             "category": row["category"],
@@ -374,6 +379,7 @@ def output_paths(partial):
 
 def main():
     print("=== Baseline RAGAS — prototype RAG NBA ===")
+    configure_logfire()  # observabilité optionnelle (Logfire) ; non bloquante sans token
 
     # 1. Vérifications préalables (sans jamais afficher la clé).
     if not MISTRAL_API_KEY:
@@ -417,7 +423,8 @@ def main():
     dataset = build_ragas_dataset(records)
     llm, embeddings = build_ragas_judge()
     metrics = build_ragas_metrics()
-    ragas_df = run_ragas_evaluation(dataset, llm, embeddings, metrics)
+    with logfire.span("ragas_evaluation", n_questions=len(records), n_metrics=len(RAGAS_METRIC_COLUMNS)):
+        ragas_df = run_ragas_evaluation(dataset, llm, embeddings, metrics)
 
     # Étape 3 : fusion + résumé + sauvegarde.
     print("Étape 3/3 : fusion des scores et écriture des résultats…")

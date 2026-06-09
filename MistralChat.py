@@ -1,6 +1,7 @@
 # MistralChat.py (version RAG)
 import streamlit as st
 import logging
+import logfire
 from mistralai import Mistral
 from pydantic import ValidationError
 
@@ -12,6 +13,7 @@ try:
     )
     from utils.vector_store import VectorStoreManager
     from utils.schemas import RagAnswer
+    from utils.observability import configure_logfire
 except ImportError as e:
     st.error(f"Erreur d'importation: {e}. Vérifiez la structure de vos dossiers et les fichiers dans 'utils'.")
     st.stop()
@@ -20,6 +22,9 @@ except ImportError as e:
 # --- Configuration du Logging ---
 # Note: Streamlit peut avoir sa propre gestion de logs. Configurer ici est une bonne pratique.
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
+
+# Observabilité optionnelle (Logfire) : ne bloque pas l'app s'il n'y a pas de token.
+configure_logfire()
 
 # --- Configuration de l'API Mistral ---
 api_key = MISTRAL_API_KEY
@@ -129,6 +134,7 @@ if prompt := st.chat_input(f"Posez votre question sur la {NAME}..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(prompt)
+    logfire.info("question_utilisateur", question=prompt)
 
     # === Début de la logique RAG ===
 
@@ -148,6 +154,8 @@ if prompt := st.chat_input(f"Posez votre question sur la {NAME}..."):
         st.error(f"Une erreur est survenue lors de la recherche d'informations pertinentes: {e}")
         logging.exception(f"Erreur pendant vector_store_manager.search pour la query: {prompt}")
         search_results = [] # On continue sans contexte si la recherche échoue
+
+    logfire.info("contextes_recuperes", n_contexts=len(search_results))
 
     # 4. Formater le contexte pour le prompt LLM
     context_str = "\n\n---\n\n".join([
@@ -177,7 +185,8 @@ if prompt := st.chat_input(f"Posez votre question sur la {NAME}..."):
         message_placeholder.text("...") # Indicateur simple
 
         # Génération de la réponse de l'assistant en utilisant le prompt augmenté
-        response_content = generer_reponse(messages_for_api)
+        with logfire.span("generation_reponse_rag"):
+            response_content = generer_reponse(messages_for_api)
 
         # Validation Pydantic de la réponse finale (ne change ni l'affichage ni le contenu).
         try:

@@ -16,6 +16,7 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 - [Audit initial](#audit-initial)
 - [Dataset d'évaluation](#dataset-dévaluation)
 - [Baseline RAGAS](#baseline-ragas)
+- [Observabilité (Logfire)](#observabilité-logfire)
 
 ## Structure du dépôt
 
@@ -39,6 +40,7 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 ├── utils/
 │   ├── config.py                # Configuration des chemins et variables d'environnement
 │   ├── data_loader.py           # Chargement OCR / Excel / documents
+│   ├── observability.py         # Configuration optionnelle de Logfire
 │   └── vector_store.py          # Création et interrogation de l'index FAISS
 ├── .env.example                 # Exemple de configuration sans clé réelle
 ├── .gitignore                   # Fichiers locaux exclus du versionnement
@@ -104,7 +106,9 @@ Tests actuellement présents :
 - `test_config.py` — configuration et chemins principaux ;
 - `test_inputs.py` — présence des documents sources ;
 - `test_imports.py` — imports sans appel API ni OCR ;
-- `test_vector_store.py` — chargement absent de l'index et structure des chunks ;
+- `test_vector_store.py` — comportements clés du vector store ;
+- `test_schemas.py` — validation Pydantic des objets du pipeline RAG ;
+- `test_observability.py` — configuration Logfire optionnelle ;
 - `test_evaluation_dataset.py` — structure du dataset d'évaluation.
 
 ## Commandes utiles
@@ -205,14 +209,28 @@ Les résultats sont écrits dans `evaluation/results/` :
 
 Le notebook `notebooks/ragas_baseline_results.ipynb` permet de visualiser ces résultats sans relancer l'évaluation.
 
-Scores moyens de la baseline actuelle :
+Scores moyens de la baseline actuelle (juge RAGAS `mistral-large-latest`, 15 questions) :
 
 | Métrique | Score moyen |
 |---|---:|
-| `faithfulness` | 0,18 |
-| `answer_relevancy` | 0,61 |
-| `context_precision` | 0,44 |
-| `context_recall` | 0,47 |
+| `faithfulness` | 0,25 |
+| `answer_relevancy` | 0,58 |
+| `context_precision` | 0,36 |
+| `context_recall` | 0,40 |
 
-La faible `faithfulness` confirme que les réponses restent insuffisamment ancrées dans les sources.
+La faible `faithfulness` confirme que les réponses restent insuffisamment ancrées dans les sources. Ces scores varient de ~0,04 à 0,08 d'un run à l'autre (juge LLM non déterministe) : on ne les sur-interprète donc pas à la 2ᵉ décimale. Valeurs exactes et détail par catégorie dans `ragas_baseline_summary.json`.
 
+---
+## Observabilité (Logfire)
+
+Logfire est utilisé pour tracer quelques étapes clés du pipeline : recherche vectorielle, génération de réponse RAG et calcul RAGAS.
+
+L'observabilité est **optionnelle** : sans `LOGFIRE_TOKEN`, l'application fonctionne normalement en mode local silencieux.
+
+Pour l'activer, ajouter les variables suivantes dans `.env` :
+
+```env
+LOGFIRE_TOKEN=your_logfire_token_here
+LOGFIRE_ENVIRONMENT=local
+```
+Les variables sont définies dans `.env.example` sans vraie valeur. Aucun secret ne doit être commité.
