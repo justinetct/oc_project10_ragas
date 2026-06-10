@@ -38,11 +38,11 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 import csv
 import json
 import math
+import time
 import logging
 import datetime
 
 import logfire
-from mistralai import Mistral
 from pydantic import ValidationError
 
 from utils.config import (
@@ -56,6 +56,7 @@ from utils.config import (
 )
 from utils.vector_store import VectorStoreManager
 from utils.schemas import RagAnswer
+from utils.rag_agent import generate_rag_answer
 from utils.observability import configure_logfire
 
 import ragas
@@ -66,9 +67,6 @@ from ragas.embeddings import LangchainEmbeddingsWrapper
 from langchain_mistralai import ChatMistralAI, MistralAIEmbeddings
 from langchain_core.rate_limiters import InMemoryRateLimiter
 
-# Logs propres : un filtre masque les lignes HTTP "par requête" (httpx), qui
-# inondaient la sortie de 429/200, tout en COMPTANT les 429 de capacité (affichés
-# en une seule ligne à la fin). Les 429 restent gérés automatiquement par retry.
 class _HttpLogFilter(logging.Filter):
     """Masque les lignes 'HTTP Request' de httpx ; compte les appels et les 429."""
 
@@ -100,19 +98,7 @@ RESULTS_DIR = EVALUATION_RESULTS_DIR
 RESULTS_CSV = RAGAS_BASELINE_RESULTS_FILE
 SUMMARY_JSON = RAGAS_BASELINE_SUMMARY_FILE
 
-# Même prompt que MistralChat.py, copié ici pour évaluer le vrai prototype sans
-# lancer Streamlit. Les accolades {context_str} et {question} sont remplies plus bas.
-SYSTEM_PROMPT = """Tu es 'NBA Analyst AI', un assistant expert sur la ligue de basketball NBA.
-Ta mission est de répondre aux questions des fans en animant le débat.
-
----
-{context_str}
----
-
-QUESTION DU FAN:
-{question}
-
-RÉPONSE DE L'ANALYSTE NBA:"""
+# Le prompt RAG et la génération vivent dans utils/rag_agent.py (agent Pydantic AI).
 
 # Colonnes du CSV de résultats détaillés.
 RESULT_COLUMNS = [
@@ -128,30 +114,38 @@ def load_dataset(path=DATASET_PATH):
         return list(csv.DictReader(f))
 
 
-def run_rag_for_question(question, manager, client):
-    """Exécute le pipeline RAG du prototype sur une question.
+def run_rag_for_question(question, manager, attempts=3):
+    """Exécute le pipeline RAG du prototype sur une question, avec ré-essais.
 
-    Reproduit la logique de `MistralChat.py` : recherche FAISS, construction du
-    contexte, puis appel Mistral à température 0.1 (comme l'app). Retourne la
+    Recherche FAISS puis génération via l'agent Pydantic AI à sortie typée
+    (`utils/rag_agent.py`) — le même agent que l'application. La recherche
+    (embeddings) comme la génération peuvent échouer sur un 429 transitoire de
+    Mistral : on ré-essaie chacune avec un petit backoff, pour ne pas corrompre les
+    données (contexte perdu) ni faire échouer toute l'évaluation. Retourne la
     réponse générée et les textes des chunks récupérés.
     """
-    results = manager.search(question, k=SEARCH_K)
+    results = []
+    for attempt in range(1, attempts + 1):
+        results = manager.search(question, k=SEARCH_K)
+        if results:
+            break
+        logging.warning(f"Recherche vide (tentative {attempt}/{attempts}, probable 429) : '{question[:60]}'")
+        time.sleep(2 * attempt)
+    if not results:
+        logging.error(f"Recherche définitivement vide : '{question[:60]}'")
 
-    if results:
-        context_str = "\n\n---\n\n".join(
-            f"Source: {r['metadata'].get('source', 'Inconnue')} (Score: {r['score']:.1f}%)\nContenu: {r['text']}"
-            for r in results
-        )
-    else:
-        context_str = "Aucune information pertinente trouvée dans la base de connaissances pour cette question."
-
-    prompt = SYSTEM_PROMPT.format(context_str=context_str, question=question)
-    response = client.chat.complete(
-        model=MODEL_NAME,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,  # identique au prototype Streamlit
-    )
-    answer = response.choices[0].message.content
+    answer = ""
+    for attempt in range(1, attempts + 1):
+        try:
+            answer = generate_rag_answer(question, results)
+            if answer and answer.strip():
+                break
+        except Exception as exc:
+            logging.warning(f"Génération échouée (tentative {attempt}/{attempts}) : {exc}")
+            time.sleep(2 * attempt)
+    if not (answer and answer.strip()):
+        answer = "Désolé, je n'ai pas pu générer de réponse."
+        logging.error(f"Génération définitivement échouée après {attempts} tentatives : '{question[:60]}'")
     retrieved_contexts = [r["text"] for r in results]
     # Validation Pydantic de la réponse RAG (ne change pas ce qui est retourné).
     try:
@@ -161,7 +155,7 @@ def run_rag_for_question(question, manager, client):
     return {"answer": answer, "retrieved_contexts": retrieved_contexts}
 
 
-def run_rag_inference(rows, manager, client):
+def run_rag_inference(rows, manager):
     """Étape 1 — exécute le RAG sur chaque question et garde les infos métier."""
     records = []
     total = len(rows)
@@ -170,7 +164,7 @@ def run_rag_inference(rows, manager, client):
         # Un span par question : la recherche et la génération (et les appels
         # Mistral auto-tracés) sont regroupés sous ce span dans Logfire.
         with logfire.span("rag_question {question_id}", question_id=row["id"], category=row["category"]):
-            rag = run_rag_for_question(row["question"], manager, client)
+            rag = run_rag_for_question(row["question"], manager)
         records.append({
             "id": row["id"],
             "category": row["category"],
@@ -214,9 +208,8 @@ def build_ragas_dataset(records):
 def build_ragas_judge():
     """Construit le LLM juge Mistral + les embeddings (échoue si la clé manque).
 
-    Le juge est throttlé (rate limiter) et son retry interne est désactivé
-    (`max_retries=0`) pour éviter le flood de 429 : c'est RAGAS qui gère le
-    backoff (voir `run_ragas_evaluation`).
+    Le juge est limité (rate limiter) et son retry interne est désactivé
+    (`max_retries=0`) pour éviter les 429
     """
     if not MISTRAL_API_KEY:
         raise SystemExit("MISTRAL_API_KEY absente : renseignez-la dans le fichier .env.")
@@ -232,7 +225,7 @@ def build_ragas_judge():
             temperature=0,
             api_key=MISTRAL_API_KEY,
             rate_limiter=rate_limiter,
-            max_retries=0,  # pas de retry interne (qui floodait) ; RAGAS gère le backoff
+            max_retries=0,  # pas de retry interne ; RAGAS gère le backoff
             timeout=RAGAS_TIMEOUT_SECONDS,
         )
     )
@@ -407,11 +400,10 @@ def main():
     else:
         print(f"Dataset chargé : {len(rows)} questions ({DATASET_PATH}).")
     results_csv, summary_json = output_paths(partial)
-    client = Mistral(api_key=MISTRAL_API_KEY)
 
-    # Étape 1 : RAG sur chaque question.
+    # Étape 1 : RAG sur chaque question (génération via l'agent Pydantic AI).
     print("Étape 1/3 : exécution du pipeline RAG (1 réponse par question)…")
-    records = run_rag_inference(rows, manager, client)
+    records = run_rag_inference(rows, manager)
 
     # Étape 2 : dataset RAGAS + juge + métriques.
     n_jobs = len(records) * len(RAGAS_METRIC_COLUMNS)

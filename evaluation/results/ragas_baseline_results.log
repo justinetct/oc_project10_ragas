@@ -1,39 +1,39 @@
-2026-06-09 09:17:45,048 - INFO - Logfire configuré (envoi activé, environnement=local).
-2026-06-09 09:17:45,053 - INFO - Chargement de l'index Faiss depuis vector_db/faiss_index.idx...
-2026-06-09 09:17:45,054 - INFO - Chargement des chunks depuis vector_db/document_chunks.pkl...
-2026-06-09 09:17:45,054 - INFO - Index (302 vecteurs) et 302 chunks chargés.
-2026-06-09 09:17:45,059 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Pour quelle équipe joue Nikola Jokić d'après les données de la saison ?'
-2026-06-09 09:17:45,402 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:17:47,340 - INFO - Recherche des 5 chunks les plus pertinents pour: 'De quoi parlent les fans dans la discussion Reddit sur l'avantage du terrain jusqu'aux Finales NBA ?'
-2026-06-09 09:17:47,570 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:17:55,271 - INFO - Recherche des 5 chunks les plus pertinents pour: 'D'après les discussions Reddit, quels arguments pour et contre le tournoi play-in les fans avancent-ils ?'
-2026-06-09 09:17:55,584 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:18:00,662 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Compare les profils statistiques de Shai Gilgeous-Alexander et Nikola Jokić (scoring, efficacité, création de jeu).'
-2026-06-09 09:18:01,270 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:18:13,022 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quel joueur a délivré le plus de passes décisives, et qu'est-ce que cela révèle de son rôle ?'
-2026-06-09 09:18:13,470 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:18:19,457 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Qui a capté le plus de rebonds cette saison, et pourquoi est-ce un atout pour son équipe ?'
-2026-06-09 09:18:19,788 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:18:23,879 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quel joueur a le meilleur pourcentage à 3 points (3P%) cette saison ?'
-2026-06-09 09:18:24,121 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:18:25,786 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quel joueur a marqué le plus de points sur l'ensemble de la saison ?'
-2026-06-09 09:18:26,983 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:18:30,017 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quelle équipe a marqué le plus de points au total cette saison ?'
-2026-06-09 09:18:30,253 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:18:32,160 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quel est le joueur le plus âgé du jeu de données, et quel âge a-t-il ?'
-2026-06-09 09:18:32,412 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:18:34,733 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Compare les rebonds à domicile et à l'extérieur des équipes sur leurs 5 derniers matchs.'
-2026-06-09 09:18:34,958 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:18:39,906 - INFO - Recherche des 5 chunks les plus pertinents pour: 'kl vs okc stts rebnd lst 5 gm??'
-2026-06-09 09:18:40,131 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:18:45,175 - INFO - Recherche des 5 chunks les plus pertinents pour: 'meilleur tireur a 3pts cette saion?? mrci'
-2026-06-09 09:18:45,472 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:18:51,425 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quelle est la recette de la ratatouille ?'
-2026-06-09 09:18:51,755 - INFO - 5 chunks pertinents trouvés.
-2026-06-09 09:18:52,926 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Donne-moi le score du match de football PSG - OM de ce week-end.'
-2026-06-09 09:18:53,191 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:43:27,230 - INFO - Logfire configuré (envoi activé, environnement=local).
+2026-06-09 10:43:27,236 - INFO - Chargement de l'index Faiss depuis vector_db/faiss_index.idx...
+2026-06-09 10:43:27,237 - INFO - Chargement des chunks depuis vector_db/document_chunks.pkl...
+2026-06-09 10:43:27,237 - INFO - Index (302 vecteurs) et 302 chunks chargés.
+2026-06-09 10:43:27,238 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Pour quelle équipe joue Nikola Jokić d'après les données de la saison ?'
+2026-06-09 10:43:27,581 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:43:28,684 - INFO - Recherche des 5 chunks les plus pertinents pour: 'De quoi parlent les fans dans la discussion Reddit sur l'avantage du terrain jusqu'aux Finales NBA ?'
+2026-06-09 10:43:29,067 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:43:33,291 - INFO - Recherche des 5 chunks les plus pertinents pour: 'D'après les discussions Reddit, quels arguments pour et contre le tournoi play-in les fans avancent-ils ?'
+2026-06-09 10:43:33,523 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:43:46,199 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Compare les profils statistiques de Shai Gilgeous-Alexander et Nikola Jokić (scoring, efficacité, création de jeu).'
+2026-06-09 10:43:46,488 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:43:57,851 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quel joueur a délivré le plus de passes décisives, et qu'est-ce que cela révèle de son rôle ?'
+2026-06-09 10:43:58,190 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:44:01,444 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Qui a capté le plus de rebonds cette saison, et pourquoi est-ce un atout pour son équipe ?'
+2026-06-09 10:44:01,691 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:44:05,033 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quel joueur a le meilleur pourcentage à 3 points (3P%) cette saison ?'
+2026-06-09 10:44:05,266 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:44:06,809 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quel joueur a marqué le plus de points sur l'ensemble de la saison ?'
+2026-06-09 10:44:07,265 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:44:08,986 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quelle équipe a marqué le plus de points au total cette saison ?'
+2026-06-09 10:44:09,219 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:44:10,460 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quel est le joueur le plus âgé du jeu de données, et quel âge a-t-il ?'
+2026-06-09 10:44:10,683 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:44:12,304 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Compare les rebonds à domicile et à l'extérieur des équipes sur leurs 5 derniers matchs.'
+2026-06-09 10:44:12,588 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:44:17,014 - INFO - Recherche des 5 chunks les plus pertinents pour: 'kl vs okc stts rebnd lst 5 gm??'
+2026-06-09 10:44:17,250 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:44:21,827 - INFO - Recherche des 5 chunks les plus pertinents pour: 'meilleur tireur a 3pts cette saion?? mrci'
+2026-06-09 10:44:22,076 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:44:33,808 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Quelle est la recette de la ratatouille ?'
+2026-06-09 10:44:34,155 - INFO - 5 chunks pertinents trouvés.
+2026-06-09 10:44:35,367 - INFO - Recherche des 5 chunks les plus pertinents pour: 'Donne-moi le score du match de football PSG - OM de ce week-end.'
+2026-06-09 10:44:35,632 - INFO - 5 chunks pertinents trouvés.
 Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
-2026-06-09 09:18:54,723 - WARNING - Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-06-09 10:44:42,882 - WARNING - Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
 === Baseline RAGAS — prototype RAG NBA ===
 Clé API Mistral : présente (non affichée).
 Index FAISS chargé : 302 vecteurs.
@@ -55,27 +55,27 @@ Dataset chargé : 15 questions (evaluation/evaluation_questions.csv).
   [14/15] E14 (hors_sujet) — exécution du RAG…
   [15/15] E15 (hors_sujet) — exécution du RAG…
 Étape 2/3 : évaluation RAGAS — 15 questions × 4 métriques = 60 jobs (juge mistral-large-latest, max_workers=1)…
-Evaluating:   0%|          | 0/60 [00:00<?, ?it/s]Evaluating:   2%|▏         | 1/60 [00:20<19:52, 20.22s/it]Evaluating:   3%|▎         | 2/60 [00:21<08:52,  9.19s/it]Evaluating:   5%|▌         | 3/60 [01:56<45:48, 48.21s/it]Evaluating:   7%|▋         | 4/60 [02:10<32:31, 34.85s/it]Evaluating:   8%|▊         | 5/60 [03:13<41:08, 44.88s/it]Evaluating:  10%|█         | 6/60 [03:15<27:14, 30.27s/it]Evaluating:  12%|█▏        | 7/60 [04:27<38:46, 43.90s/it]Evaluating:  13%|█▎        | 8/60 [04:43<30:25, 35.11s/it]Evaluating:  15%|█▌        | 9/60 [05:39<35:20, 41.58s/it]Evaluating:  17%|█▋        | 10/60 [05:41<24:27, 29.34s/it]Evaluating:  18%|█▊        | 11/60 [06:42<31:50, 38.98s/it]Evaluating:  20%|██        | 12/60 [07:02<26:37, 33.28s/it]Evaluating:  22%|██▏       | 13/60 [09:06<47:36, 60.77s/it]Evaluating:  23%|██▎       | 14/60 [09:08<33:00, 43.06s/it]Evaluating:  25%|██▌       | 15/60 [10:27<40:28, 53.98s/it]Evaluating:  27%|██▋       | 16/60 [10:43<31:05, 42.41s/it]Evaluating:  28%|██▊       | 17/60 [11:36<32:48, 45.77s/it]Evaluating:  30%|███       | 18/60 [11:38<22:46, 32.53s/it]Evaluating:  32%|███▏      | 19/60 [12:39<28:03, 41.06s/it]Evaluating:  33%|███▎      | 20/60 [12:57<22:44, 34.12s/it]Evaluating:  35%|███▌      | 21/60 [13:46<25:04, 38.57s/it]Evaluating:  37%|███▋      | 22/60 [13:48<17:26, 27.53s/it]Evaluating:  38%|███▊      | 23/60 [14:54<24:10, 39.20s/it]Evaluating:  40%|████      | 24/60 [15:11<19:28, 32.46s/it]Evaluating:  42%|████▏     | 25/60 [15:50<20:08, 34.54s/it]Evaluating:  43%|████▎     | 26/60 [15:54<14:15, 25.16s/it]Evaluating:  45%|████▌     | 27/60 [17:12<22:36, 41.12s/it]Evaluating:  47%|████▋     | 28/60 [17:32<18:34, 34.84s/it]Evaluating:  48%|████▊     | 29/60 [18:10<18:29, 35.80s/it]Evaluating:  50%|█████     | 30/60 [18:12<12:48, 25.61s/it]Evaluating:  52%|█████▏    | 31/60 [19:23<18:53, 39.10s/it]Evaluating:  53%|█████▎    | 32/60 [19:38<14:56, 32.02s/it]Evaluating:  55%|█████▌    | 33/60 [20:23<16:09, 35.92s/it]Evaluating:  57%|█████▋    | 34/60 [20:26<11:17, 26.05s/it]Evaluating:  58%|█████▊    | 35/60 [21:44<17:18, 41.56s/it]Evaluating:  60%|██████    | 36/60 [21:57<13:10, 32.96s/it]Evaluating:  62%|██████▏   | 37/60 [22:38<13:34, 35.39s/it]Evaluating:  63%|██████▎   | 38/60 [22:39<09:16, 25.28s/it]Evaluating:  65%|██████▌   | 39/60 [23:56<14:11, 40.55s/it]Evaluating:  67%|██████▋   | 40/60 [24:11<11:00, 33.02s/it]Evaluating:  68%|██████▊   | 41/60 [25:03<12:15, 38.68s/it]Evaluating:  70%|███████   | 42/60 [25:05<08:20, 27.82s/it]Evaluating:  72%|███████▏  | 43/60 [26:11<11:05, 39.13s/it]Evaluating:  73%|███████▎  | 44/60 [26:27<08:34, 32.19s/it]Evaluating:  75%|███████▌  | 45/60 [27:20<09:35, 38.40s/it]Evaluating:  77%|███████▋  | 46/60 [27:22<06:23, 27.38s/it]Evaluating:  78%|███████▊  | 47/60 [28:23<08:08, 37.59s/it]Evaluating:  80%|████████  | 48/60 [28:42<06:22, 31.89s/it]Evaluating:  82%|████████▏ | 49/60 [29:38<07:12, 39.32s/it]Evaluating:  83%|████████▎ | 50/60 [29:40<04:40, 28.05s/it]Evaluating:  85%|████████▌ | 51/60 [30:41<05:40, 37.81s/it]Evaluating:  87%|████████▋ | 52/60 [30:57<04:10, 31.29s/it]Evaluating:  88%|████████▊ | 53/60 [31:35<03:53, 33.30s/it]Evaluating:  90%|█████████ | 54/60 [31:42<02:32, 25.44s/it]Evaluating:  92%|█████████▏| 55/60 [32:52<03:14, 38.93s/it]Evaluating:  93%|█████████▎| 56/60 [33:08<02:07, 31.89s/it]Evaluating:  95%|█████████▌| 57/60 [33:44<01:40, 33.38s/it]Evaluating:  97%|█████████▋| 58/60 [33:56<00:53, 26.87s/it]Evaluating:  98%|█████████▊| 59/60 [35:07<00:40, 40.09s/it]Evaluating: 100%|██████████| 60/60 [35:25<00:00, 33.46s/it]Evaluating: 100%|██████████| 60/60 [35:25<00:00, 35.43s/it]
+Evaluating:   0%|          | 0/60 [00:00<?, ?it/s]Evaluating:   2%|▏         | 1/60 [00:13<13:39, 13.90s/it]Evaluating:   3%|▎         | 2/60 [00:16<07:08,  7.38s/it]Evaluating:   5%|▌         | 3/60 [01:54<46:04, 48.50s/it]Evaluating:   7%|▋         | 4/60 [02:09<32:57, 35.30s/it]Evaluating:   8%|▊         | 5/60 [03:07<40:01, 43.67s/it]Evaluating:  10%|█         | 6/60 [03:09<26:28, 29.41s/it]Evaluating:  12%|█▏        | 7/60 [04:28<40:25, 45.76s/it]Evaluating:  13%|█▎        | 8/60 [04:42<30:52, 35.63s/it]Evaluating:  15%|█▌        | 9/60 [05:38<35:34, 41.85s/it]Evaluating:  17%|█▋        | 10/60 [05:40<24:35, 29.52s/it]Evaluating:  18%|█▊        | 11/60 [06:42<32:11, 39.42s/it]Evaluating:  20%|██        | 12/60 [06:59<26:07, 32.66s/it]Evaluating:  22%|██▏       | 13/60 [08:39<41:40, 53.20s/it]Evaluating:  23%|██▎       | 14/60 [08:41<28:54, 37.72s/it]Evaluating:  25%|██▌       | 15/60 [09:23<29:10, 38.91s/it]Evaluating:  27%|██▋       | 16/60 [09:40<23:47, 32.44s/it]Evaluating:  28%|██▊       | 17/60 [10:28<26:34, 37.09s/it]Evaluating:  30%|███       | 18/60 [10:30<18:31, 26.46s/it]Evaluating:  32%|███▏      | 19/60 [11:41<27:12, 39.82s/it]Evaluating:  33%|███▎      | 20/60 [12:01<22:31, 33.78s/it]Evaluating:  35%|███▌      | 21/60 [12:42<23:22, 35.95s/it]Evaluating:  37%|███▋      | 22/60 [12:44<16:20, 25.80s/it]Evaluating:  38%|███▊      | 23/60 [13:55<24:17, 39.39s/it]Evaluating:  40%|████      | 24/60 [14:12<19:34, 32.63s/it]Evaluating:  42%|████▏     | 25/60 [14:50<20:05, 34.45s/it]Evaluating:  43%|████▎     | 26/60 [14:52<13:57, 24.62s/it]Evaluating:  45%|████▌     | 27/60 [16:24<24:43, 44.97s/it]Evaluating:  47%|████▋     | 28/60 [16:43<19:44, 37.01s/it]Evaluating:  48%|████▊     | 29/60 [17:19<18:56, 36.67s/it]Evaluating:  50%|█████     | 30/60 [17:26<13:52, 27.74s/it]Evaluating:  52%|█████▏    | 31/60 [18:37<19:41, 40.73s/it]Evaluating:  53%|█████▎    | 32/60 [18:55<15:52, 34.01s/it]Evaluating:  55%|█████▌    | 33/60 [19:30<15:28, 34.41s/it]Evaluating:  57%|█████▋    | 34/60 [19:37<11:20, 26.17s/it]Evaluating:  58%|█████▊    | 35/60 [20:55<17:20, 41.60s/it]Evaluating:  60%|██████    | 36/60 [21:09<13:23, 33.46s/it]Evaluating:  62%|██████▏   | 37/60 [21:49<13:28, 35.15s/it]Evaluating:  63%|██████▎   | 38/60 [21:55<09:44, 26.58s/it]Evaluating:  65%|██████▌   | 39/60 [23:14<14:47, 42.28s/it]Evaluating:  67%|██████▋   | 40/60 [23:27<11:07, 33.36s/it]Evaluating:  68%|██████▊   | 41/60 [24:19<12:24, 39.16s/it]Evaluating:  70%|███████   | 42/60 [24:23<08:31, 28.41s/it]Evaluating:  72%|███████▏  | 43/60 [25:22<10:38, 37.56s/it]Evaluating:  73%|███████▎  | 44/60 [25:38<08:20, 31.27s/it]Evaluating:  75%|███████▌  | 45/60 [26:22<08:46, 35.10s/it]Evaluating:  77%|███████▋  | 46/60 [26:25<05:54, 25.29s/it]Evaluating:  78%|███████▊  | 47/60 [27:40<08:43, 40.24s/it]Evaluating:  80%|████████  | 48/60 [27:56<06:36, 33.02s/it]Evaluating:  82%|████████▏ | 49/60 [29:31<09:26, 51.53s/it]Evaluating:  83%|████████▎ | 50/60 [29:32<06:05, 36.54s/it]Evaluating:  85%|████████▌ | 51/60 [30:23<06:07, 40.81s/it]Evaluating:  87%|████████▋ | 52/60 [30:39<04:27, 33.42s/it]Evaluating:  88%|████████▊ | 53/60 [31:17<04:02, 34.64s/it]Evaluating:  90%|█████████ | 54/60 [31:23<02:37, 26.21s/it]Evaluating:  92%|█████████▏| 55/60 [32:39<03:26, 41.20s/it]Evaluating:  93%|█████████▎| 56/60 [32:55<02:14, 33.51s/it]Evaluating:  95%|█████████▌| 57/60 [33:33<01:44, 34.76s/it]Evaluating:  97%|█████████▋| 58/60 [33:40<00:52, 26.48s/it]Evaluating:  98%|█████████▊| 59/60 [34:55<00:41, 41.06s/it]Evaluating: 100%|██████████| 60/60 [35:13<00:00, 34.24s/it]Evaluating: 100%|██████████| 60/60 [35:13<00:00, 35.23s/it]
 Étape 3/3 : fusion des scores et écriture des résultats…
 
 === Résultats baseline (4 métriques RAGAS) ===
 Questions évaluées : 15/15
 Scores notés par métrique : {'faithfulness': 15, 'answer_relevancy': 15, 'context_precision': 15, 'context_recall': 15}
 Scores moyens :
-  - faithfulness       0.2512
-  - answer_relevancy   0.576
+  - faithfulness       0.3534
+  - answer_relevancy   0.552
   - context_precision  0.3622
-  - context_recall     0.4
+  - context_recall     0.4333
 Scores moyens par catégorie :
-  - bruitee     {'faithfulness': 0.0285, 'answer_relevancy': 0.3704, 'context_precision': 0.0, 'context_recall': 0.25}
-  - chiffree    {'faithfulness': 0.3256, 'answer_relevancy': 0.5608, 'context_precision': 0.5567, 'context_recall': 0.4}
-  - complexe    {'faithfulness': 0.517, 'answer_relevancy': 0.8538, 'context_precision': 0.35, 'context_recall': 0.75}
-  - hors_sujet  {'faithfulness': 0.2143, 'answer_relevancy': 0.0, 'context_precision': 0.0, 'context_recall': 0.0}
-  - mixte       {'faithfulness': 0.0, 'answer_relevancy': 0.8227, 'context_precision': 0.3084, 'context_recall': 0.0}
-  - simple      {'faithfulness': 0.3101, 'answer_relevancy': 0.8711, 'context_precision': 0.6666, 'context_recall': 1.0}
+  - bruitee     {'faithfulness': 0.0476, 'answer_relevancy': 0.4436, 'context_precision': 0.0, 'context_recall': 0.0}
+  - chiffree    {'faithfulness': 0.5651, 'answer_relevancy': 0.3893, 'context_precision': 0.5567, 'context_recall': 0.4}
+  - complexe    {'faithfulness': 0.5621, 'answer_relevancy': 0.8603, 'context_precision': 0.35, 'context_recall': 0.75}
+  - hors_sujet  {'faithfulness': 0.0416, 'answer_relevancy': 0.0, 'context_precision': 0.0, 'context_recall': 0.5}
+  - mixte       {'faithfulness': 0.0, 'answer_relevancy': 0.9183, 'context_precision': 0.3084, 'context_recall': 0.0}
+  - simple      {'faithfulness': 0.5867, 'answer_relevancy': 0.9444, 'context_precision': 0.6666, 'context_recall': 1.0}
 
 Évaluation complète : OUI — 15/15 questions, 4 métriques notées pour chacune.
-Réseau Mistral : 198 réponse(s) 429 (capacité serveur) réessayée(s) automatiquement sur 395 appels — toutes abouties, aucune perte.
+Réseau Mistral : 213 réponse(s) 429 (capacité serveur) réessayée(s) automatiquement sur 411 appels — toutes abouties, aucune perte.
 
 Résultats détaillés : evaluation/results/ragas_baseline_results.csv
 Résumé              : evaluation/results/ragas_baseline_summary.json

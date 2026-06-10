@@ -37,8 +37,10 @@ pytesseract = "^0.3"         # prévu pour la suite (non utilisé dans le code p
 # --- Évaluation RAGAS (utilisées par evaluate_ragas.py) ---
 ragas = "^0.4"                 # épinglé : on garde l'API classique evaluate() (stable en 0.4.x)
 langchain-mistralai = "^0.2"   # branche Mistral (LLM + embeddings) sur RAGAS
-# --- Observabilité (prévue, non encore utilisée dans le code) ---
+# --- Observabilité : traçage Logfire des étapes clés du pipeline ---
 logfire = "*"
+# --- Génération structurée : agent RAG à sortie typée (Pydantic AI) ---
+pydantic-ai-slim = {version = "<1.0", extras = ["mistral"]}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
@@ -67,6 +69,13 @@ ignore = ["E501"]  # longueur de ligne tolérée sur ce prototype
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# On masque trois DeprecationWarning internes à OpenTelemetry (dépendance
+# transitive de Logfire) : elles concernent du code tiers, pas le nôtre.
+filterwarnings = [
+    "ignore:You should use `Logger` instead:DeprecationWarning",
+    "ignore:You should use `LoggerProvider` instead:DeprecationWarning",
+    "ignore:You should use `ProxyLoggerProvider` instead:DeprecationWarning",
+]
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

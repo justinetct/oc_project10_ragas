@@ -8,16 +8,13 @@ load_dotenv()
 # --- Clé API ---
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 if not MISTRAL_API_KEY:
-    print("⚠️ Attention: La clé API Mistral (MISTRAL_API_KEY) n'est pas définie dans le fichier .env")
-    # Vous pouvez choisir de lever une exception ici ou de continuer avec des fonctionnalités limitées
-    # raise ValueError("Clé API Mistral manquante. Veuillez la définir dans le fichier .env")
+    raise ValueError("Clé API Mistral manquante. Veuillez la définir dans le fichier .env")
 
 # --- Modèles Mistral ---
 EMBEDDING_MODEL = "mistral-embed"
 MODEL_NAME = "mistral-small-latest" # Ou un autre modèle comme mistral-large-latest
 
 # --- Configuration de l'Indexation ---
-# INPUT_DATA_URL = os.getenv("INPUT_DATA_URL") # Décommentez si vous utilisez une URL
 INPUT_DIR = "inputs"                # Dossier pour les données sources après extraction
 VECTOR_DB_DIR = "vector_db"         # Dossier pour stocker l'index Faiss et les chunks
 FAISS_INDEX_FILE = os.path.join(VECTOR_DB_DIR, "faiss_index.idx")
@@ -45,8 +42,9 @@ RAGAS_METRIC_COLUMNS = [
     "context_recall",
 ]
 RAGAS_ANSWER_RELEVANCY_STRICTNESS = 1
+# Débit du juge RAGAS. mistral-large est limité par clé (~0,25 req/s sur plan Scale)
 RAGAS_MAX_WORKERS = 1
-RAGAS_REQUESTS_PER_SECOND = 0.2
+RAGAS_REQUESTS_PER_SECOND = 0.2475
 RAGAS_TIMEOUT_SECONDS = 300
 RAGAS_MAX_RETRIES = 15
 RAGAS_MAX_WAIT_SECONDS = 90

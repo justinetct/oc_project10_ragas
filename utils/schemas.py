@@ -1,10 +1,11 @@
 """utils/schemas.py — Modèles Pydantic simples pour fiabiliser le pipeline RAG.
 
 Ces modèles décrivent et valident la structure des objets manipulés par le RAG :
-- DocumentInput  : un document source chargé ;
-- DocumentChunk  : un morceau de document (tel que stocké dans l'index) ;
-- RetrievedChunk : un chunk retourné par la recherche, avec son score ;
-- RagAnswer      : une réponse complète (question + réponse + contextes).
+- DocumentInput   : un document source chargé ;
+- DocumentChunk   : un morceau de document (tel que stocké dans l'index) ;
+- RetrievedChunk  : un chunk retourné par la recherche, avec son score ;
+- RagAnswerOutput : la sortie typée de l'agent Pydantic AI (la réponse seule) ;
+- RagAnswer       : la réponse complète (réponse + question + contextes).
 
 Ils restent volontairement simples : types de base, champs explicites, validation
 minimale (champs texte non vides, métadonnées = dictionnaire). Pydantic v2.
@@ -26,6 +27,8 @@ class ChunkMetadata(BaseModel):
     d'éventuels champs en plus (ex. full_path, sheet) pour ne rien perdre de ce
     que produit déjà data_loader."""
 
+    # Conserve les métadonnées supplémentaires produites par les loaders
+    # (ex. page, sheet, full_path) tout en validant les champs essentiels.
     model_config = ConfigDict(extra="allow")
 
     source: str = Field(min_length=1)
@@ -53,9 +56,19 @@ class RetrievedChunk(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
-class RagAnswer(BaseModel):
-    """Une réponse complète du RAG : question, réponse et contextes utilisés."""
+class RagAnswerOutput(BaseModel):
+    """Sortie typée de l'agent Pydantic AI : la réponse générée par le LLM.
+
+    Ne contient que la réponse (`answer`). Les contextes récupérés viennent de
+    FAISS (pas du LLM) : c'est `RagAnswer` qui étend ce modèle pour les ajouter.
+    """
+
+    answer: str = Field(min_length=1)
+
+
+class RagAnswer(RagAnswerOutput):
+    """Une réponse complète du RAG : la réponse de l'agent (`answer`, héritée de
+    RagAnswerOutput) enrichie de la question et des contextes utilisés."""
 
     question: str = Field(min_length=1)
-    answer: str = Field(min_length=1)
     retrieved_contexts: list[RetrievedChunk]

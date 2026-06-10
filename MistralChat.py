@@ -2,7 +2,6 @@
 import streamlit as st
 import logging
 import logfire
-from mistralai import Mistral
 from pydantic import ValidationError
 
 # --- Importations depuis vos modules ---
@@ -14,6 +13,7 @@ try:
     from utils.vector_store import VectorStoreManager
     from utils.schemas import RagAnswer
     from utils.observability import configure_logfire
+    from utils.rag_agent import generate_rag_answer
 except ImportError as e:
     st.error(f"Erreur d'importation: {e}. Vérifiez la structure de vos dossiers et les fichiers dans 'utils'.")
     st.stop()
@@ -33,14 +33,7 @@ model = MODEL_NAME
 if not api_key:
     st.error("Erreur : Clé API Mistral non trouvée (MISTRAL_API_KEY). Veuillez la définir dans le fichier .env.")
     st.stop()
-
-try:
-    client = Mistral(api_key=api_key)
-    logging.info("Client Mistral initialisé.")
-except Exception as e:
-    st.error(f"Erreur lors de l'initialisation du client Mistral : {e}")
-    logging.exception("Erreur initialisation client Mistral")
-    st.stop()
+# Le client Mistral est désormais géré par l'agent Pydantic AI (utils/rag_agent.py).
 
 # --- Chargement du Vector Store (mis en cache) ---
 @st.cache_resource # Garde le manager chargé en mémoire pour la session
@@ -68,56 +61,12 @@ def get_vector_store_manager():
 
 vector_store_manager = get_vector_store_manager()
 
-# --- Prompt Système pour RAG ---
-# Adaptez ce prompt selon vos besoins
-SYSTEM_PROMPT = """Tu es 'NBA Analyst AI', un assistant expert sur la ligue de basketball NBA.
-Ta mission est de répondre aux questions des fans en animant le débat.
-
----
-{context_str}
----
-
-QUESTION DU FAN:
-{question}
-
-RÉPONSE DE L'ANALYSTE NBA:"""
-
+# Le prompt RAG vit dans utils/rag_agent.py (utilisé par l'agent Pydantic AI).
 
 # --- Initialisation de l'historique de conversation ---
 if "messages" not in st.session_state:
     # Message d'accueil initial
     st.session_state.messages = [{"role": "assistant", "content": f"Bonjour ! Je suis votre analyste IA pour la {NAME}. Posez-moi vos questions sur les équipes, les joueurs ou les statistiques, et je vous répondrai en me basant sur les données les plus récentes."}]
-
-# --- Fonctions ---
-
-def generer_reponse(prompt_messages: list[dict]) -> str:
-    """
-    Envoie le prompt (qui inclut maintenant le contexte) à l'API Mistral.
-    """
-    if not prompt_messages:
-         logging.warning("Tentative de génération de réponse avec un prompt vide.")
-         return "Je ne peux pas traiter une demande vide."
-    try:
-        logging.info(f"Appel à l'API Mistral modèle '{model}' avec {len(prompt_messages)} message(s).")
-        # Log le contenu du prompt (peut être long) - commenter si trop verbeux
-        # logging.debug(f"Prompt envoyé à l'API: {prompt_messages}")
-
-        response = client.chat.complete(
-            model=model,
-            messages=prompt_messages,
-            temperature=0.1, # Température basse pour des réponses factuelles basées sur le contexte
-            # top_p=0.9,
-        )
-        if response.choices and len(response.choices) > 0:
-            logging.info("Réponse reçue de l'API Mistral.")
-            return response.choices[0].message.content
-        else:
-            logging.warning("L'API n'a pas retourné de choix valide.")
-            return "Désolé, je n'ai pas pu générer de réponse valide pour le moment."
-    except Exception as e:
-        st.error(f"Erreur lors de l'appel à l'API Mistral: {e}")
-        logging.exception("Erreur API Mistral pendant client.chat")
-        return "Je suis désolé, une erreur technique m'empêche de répondre. Veuillez réessayer plus tard."
 
 # --- Interface Utilisateur Streamlit ---
 st.title(APP_TITLE)
@@ -134,71 +83,56 @@ if prompt := st.chat_input(f"Posez votre question sur la {NAME}..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(prompt)
-    logfire.info("question_utilisateur", question=prompt)
-
-    # === Début de la logique RAG ===
-
-    # 2. Vérifier si le Vector Store est disponible
+    # 2. Vérifier si le Vector Store est disponible (précondition au RAG)
     if vector_store_manager is None:
         st.error("Le service de recherche de connaissances n'est pas disponible. Impossible de traiter votre demande.")
         logging.error("VectorStoreManager non disponible pour la recherche.")
         # On arrête ici car on ne peut pas faire de RAG
         st.stop()
 
-    # 3. Rechercher le contexte dans le Vector Store
-    try:
-        logging.info(f"Recherche de contexte pour la question: '{prompt}' avec k={SEARCH_K}")
-        search_results = vector_store_manager.search(prompt, k=SEARCH_K)
-        logging.info(f"{len(search_results)} chunks trouvés dans le Vector Store.")
-    except Exception as e:
-        st.error(f"Une erreur est survenue lors de la recherche d'informations pertinentes: {e}")
-        logging.exception(f"Erreur pendant vector_store_manager.search pour la query: {prompt}")
-        search_results = [] # On continue sans contexte si la recherche échoue
+    # === Logique RAG ===
+    # Tout le tour (recherche + génération) est regroupé dans un seul span Logfire
+    # "question_rag", avec un span imbriqué "generation_reponse_rag" pour la génération.
+    with logfire.span("question_rag", question=prompt):
+        logfire.info("question_utilisateur", question=prompt)
 
-    logfire.info("contextes_recuperes", n_contexts=len(search_results))
-
-    # 4. Formater le contexte pour le prompt LLM
-    context_str = "\n\n---\n\n".join([
-        f"Source: {res['metadata'].get('source', 'Inconnue')} (Score: {res['score']:.1f}%)\nContenu: {res['text']}"
-        for res in search_results
-    ])
-
-    if not search_results:
-        context_str = "Aucune information pertinente trouvée dans la base de connaissances pour cette question."
-        logging.warning(f"Aucun contexte trouvé pour la query: {prompt}")
-
-    # 5. Construire le prompt final pour l'API Mistral en utilisant le System Prompt RAG
-    final_prompt_for_llm = SYSTEM_PROMPT.format(context_str=context_str, question=prompt)
-
-    # Créer la liste de messages pour l'API (juste le prompt système/utilisateur combiné)
-    messages_for_api = [
-        # On pourrait séparer system et user, mais Mistral gère bien un long message user structuré
-        {"role": "user", "content": final_prompt_for_llm}
-    ]
-
-    # === Fin de la logique RAG ===
-
-
-    # 6. Afficher indicateur + Générer la réponse de l'assistant via LLM
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        message_placeholder.text("...") # Indicateur simple
-
-        # Génération de la réponse de l'assistant en utilisant le prompt augmenté
-        with logfire.span("generation_reponse_rag"):
-            response_content = generer_reponse(messages_for_api)
-
-        # Validation Pydantic de la réponse finale (ne change ni l'affichage ni le contenu).
+        # 3. Rechercher le contexte dans le Vector Store
         try:
-            RagAnswer(question=prompt, answer=response_content, retrieved_contexts=search_results)
-        except ValidationError as e:
-            logging.warning(f"Réponse RAG non conforme au schéma RagAnswer : {e}")
+            logging.info(f"Recherche de contexte pour la question: '{prompt}' avec k={SEARCH_K}")
+            search_results = vector_store_manager.search(prompt, k=SEARCH_K)
+            logging.info(f"{len(search_results)} chunks trouvés dans le Vector Store.")
+        except Exception as e:
+            st.error(f"Une erreur est survenue lors de la recherche d'informations pertinentes: {e}")
+            logging.exception(f"Erreur pendant vector_store_manager.search pour la query: {prompt}")
+            search_results = [] # On continue sans contexte si la recherche échoue
 
-        # Affichage de la réponse complète
-        message_placeholder.write(response_content)
+        logfire.info("contextes_recuperes", n_contexts=len(search_results))
 
-    # 7. Ajouter la réponse de l'assistant à l'historique (pour affichage UI)
-    st.session_state.messages.append({"role": "assistant", "content": response_content})
+        # 4. Générer la réponse via l'agent Pydantic AI (sortie typée, validée Pydantic).
+        #    Les contextes récupérés (FAISS) sont passés à l'agent ; l'affichage et le
+        #    comportement utilisateur de l'interface restent identiques.
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            message_placeholder.text("...") # Indicateur simple
+
+            with logfire.span("generation_reponse_rag"):
+                try:
+                    response_content = generate_rag_answer(prompt, search_results)
+                except Exception:
+                    logging.exception("Erreur lors de la génération via l'agent Pydantic AI")
+                    response_content = "Je suis désolé, une erreur technique m'empêche de répondre. Veuillez réessayer plus tard."
+
+            # Validation Pydantic de la réponse finale (ne change ni l'affichage ni le contenu).
+            try:
+                RagAnswer(question=prompt, answer=response_content, retrieved_contexts=search_results)
+            except ValidationError as e:
+                logging.warning(f"Réponse RAG non conforme au schéma RagAnswer : {e}")
+
+            # Affichage de la réponse complète
+            message_placeholder.write(response_content)
+
+        # 5. Ajouter la réponse de l'assistant à l'historique (pour affichage UI)
+        st.session_state.messages.append({"role": "assistant", "content": response_content})
 
 # Petit pied de page optionnel
 st.markdown("---")
