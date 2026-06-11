@@ -4,36 +4,51 @@
 
 1. [Contexte du projet](#1-contexte-du-projet)
 2. [Audit du prototype initial](#2-audit-du-prototype-initial)
-3. [Évaluation RAGAS](#3-évaluation-ragas)
+3. [Méthodologie d'évaluation](#3-méthodologie-dévaluation)
    - [Jeu de questions](#jeu-de-questions)
    - [Métriques](#métriques)
-4. [Évaluation baseline](#4-évaluation-baseline)
-5. [Modifications](#5-modifications)
+4. [Évaluation RAG v1 — baseline](#4-évaluation-rag-v1--baseline)
+5. [Passage à RAG v2 — contrôlé](#5-passage-à-rag-v2--contrôlé)
    - [Pydantic](#pydantic)
    - [Pydantic AI](#pydantic-ai)
    - [Logfire](#logfire)
-6. [Réévaluation](#6-réévaluation)
-7. [Renforcement SQL](#7-renforcement-sql)
+6. [Réévaluation RAG v2 — contrôlé](#6-réévaluation-rag-v2--contrôlé)
+   - [Comparaison avant / après](#comparaison-avant--après)
+   - [Robustesse des résultats](#robustesse-des-résultats)
+   - [Limites restantes](#limites-restantes)
+7. [Préparation de RAG v3 — hybride SQL](#7-préparation-de-rag-v3--hybride-sql)
+   - [Ce que contient le fichier Excel](#ce-que-contient-le-fichier-excel)
+   - [Schéma de base retenu](#schéma-de-base-retenu)
+   - [Pipeline d'ingestion](#pipeline-dingestion)
+   - [SQL Tool LangChain en lecture seule](#sql-tool-langchain-en-lecture-seule)
 8. [Conclusion](#8-conclusion)
 
 ---
 
 ## 1. Contexte du projet
 
-L'application est un assistant conversationnel sur la NBA. Il est destiné à des analystes et des entraîneurs qui veulent interroger leurs documents : discussions de fans, rapports, statistiques de saison.
+L'application est un assistant conversationnel sur la NBA. Elle permet d'interroger des discussions de fans, des rapports et des statistiques de saison.
 
-L'assistant repose sur un pipeline RAG (*Retrieval-Augmented Generation*). Le principe est simple : avant de répondre, le système cherche des passages pertinents dans les documents, puis demande à un modèle de langage de rédiger une réponse appuyée sur ces passages.
+Elle repose sur un pipeline RAG (*Retrieval-Augmented Generation*). Avant de répondre, le système cherche des passages pertinents dans les documents. Il demande ensuite à un modèle de langage de rédiger une réponse à partir de ces passages.
 
 Les sources sont mixtes :
 
-- quatre PDF de discussions Reddit, sous forme de captures d'écran, dont le texte est extrait par OCR (reconnaissance de texte dans des images) ;
-- un fichier Excel de statistiques NBA (`regular NBA.xlsx`), avec les chiffres de la saison régulière par joueur.
+- quatre PDF de discussions Reddit (captures d'écran, texte extrait par OCR) ;
+- un fichier Excel de statistiques de saison (`regular NBA.xlsx`).
 
-Le travail présenté ici suit trois axes :
+Le travail suit trois axes :
 
-1. auditer le prototype existant et identifier ses limites ;
-2. évaluer son comportement avec des métriques objectives, puis renforcer le pipeline (Pydantic, Pydantic AI, Logfire) et mesurer l'effet de ces modifications ;
-3. préparer un accès aux chiffres via une base SQL.
+1. auditer le prototype et identifier ses limites ;
+2. évaluer le RAG avec RAGAS, puis mesurer l'effet des modifications ;
+3. préparer un accès SQL aux données chiffrées.
+
+Pour simplifier la lecture, les versions sont nommées ainsi :
+
+| Nom | Description | Tag Git prévu |
+|---|---|---|
+| **RAG v1 — baseline** | pipeline RAG initial | `rag-v1-baseline` |
+| **RAG v2 — contrôlé** | ajout de Pydantic, Pydantic AI et Logfire | `rag-v2-controlled` |
+| **RAG v3 — hybride SQL** | ajout de SQLite et du SQL Tool pour les questions chiffrées | `rag-v3-sql-hybrid` |
 
 ---
 
@@ -60,13 +75,13 @@ flowchart LR
 Chaque étape en une phrase :
 
 - **Extraction** : le texte est extrait des PDF (par OCR pour les captures Reddit) et du fichier Excel (converti en texte).
-- **Découpage en chunks** : les documents sont découpés en morceaux de texte d'environ 1 500 caractères, plus faciles à rechercher.
+- **Découpage en chunks** : les documents sont découpés en morceaux d'environ 1 500 caractères, plus faciles à rechercher.
 - **Embeddings** : chaque chunk est transformé en vecteur numérique qui représente son sens (modèle `mistral-embed`).
-- **Index FAISS** : les vecteurs sont stockés dans un index qui permet de retrouver rapidement les chunks les plus proches d'une question.
+- **Index FAISS** : les vecteurs sont stockés dans un index de recherche rapide.
 - **Recherche vectorielle** : pour chaque question, les 5 chunks les plus proches sont récupérés.
-- **Génération** : un modèle Mistral (`mistral-small-latest`) rédige la réponse à partir de la question et des chunks récupérés.
+- **Génération** : un modèle Mistral (`mistral-small-latest`) rédige la réponse à partir de la question et des chunks.
 
-L'interface utilisateur est une application Streamlit (`MistralChat.py`). L'indexation produit 302 chunks à partir de 5 documents.
+L'interface est une application Streamlit (`MistralChat.py`). L'indexation produit 302 chunks à partir de 5 documents.
 
 ### Ce qui fonctionne
 
@@ -77,60 +92,62 @@ L'interface utilisateur est une application Streamlit (`MistralChat.py`). L'inde
 
 ### Limites observées
 
-- les réponses peuvent être peu ancrées dans les sources : le prompt initial (« animer le débat ») n'oblige pas le modèle à se limiter aux contextes récupérés ;
+- les réponses peuvent être peu ancrées dans les sources : le prompt initial (« animer le débat ») n'oblige pas le modèle à se limiter aux contextes ;
 - les questions chiffrées sont fragiles ;
 - FAISS retrouve du texte proche, mais ne calcule rien : il ne sait pas trouver un maximum dans le fichier Excel ;
-- l'OCR des PDF Reddit ajoute du bruit (erreurs de reconnaissance, mise en page mal reconstruite) ;
+- l'OCR des PDF Reddit ajoute du bruit ;
 - les questions hors sujet ne sont pas toujours refusées (testé avec une recette de cuisine : le modèle répond souvent).
 
-### Un exemple révélateur
+### Exemple de limite
 
-À la question « quel joueur a le meilleur pourcentage à 3 points ? », le modèle peut répondre **Shai Gilgeous-Alexander — 37,5 %**, alors qu'un extrait récupéré contient déjà **Nikola Jokić — 41,7 %**. Le système reformule un passage : il ne calcule pas le maximum de la colonne. Le RAG seul ne suffit donc pas pour les questions de calcul.
+À la question « quel joueur a le meilleur pourcentage à 3 points ? », le modèle peut répondre **Shai Gilgeous-Alexander — 37,5 %**. Pourtant, un extrait récupéré contient déjà **Nikola Jokić — 41,7 %**.
+
+Le système reformule un passage. Il ne calcule pas le maximum de la colonne. Le RAG seul ne suffit donc pas pour les questions de calcul.
 
 ![baseline_streamlit.png](img/baseline_streamlit.png)
 
 ---
 
-## 3. Évaluation RAGAS
+## 3. Méthodologie d'évaluation
 
-Pour mesurer objectivement le comportement du prototype, une évaluation automatique a été mise en place avec RAGAS. Le script `scripts/evaluate_ragas.py` exécute le vrai pipeline de l'application sur chaque question, puis calcule les métriques. Les résultats sont écrits dans `evaluation/results/`.
+Pour mesurer le comportement du prototype, une évaluation automatique a été mise en place avec RAGAS. Le script `scripts/evaluate_ragas.py` exécute le vrai pipeline de l'application sur chaque question, puis calcule les métriques. Les résultats sont écrits dans `evaluation/results/`.
 
 ### Jeu de questions
 
-Un dataset de 15 questions a été créé dans `evaluation/evaluation_questions.csv`. Chaque ligne contient la question, sa catégorie, le comportement attendu, une réponse de référence courte et un champ `requires_sql_future` qui marque les questions nécessitant un calcul.
+Un jeu de 15 questions est défini dans `evaluation/evaluation_questions.csv`. Chaque ligne contient la question, sa catégorie, le comportement attendu et une réponse de référence courte. Un champ `requires_sql_future` marque les questions qui demandent un calcul.
 
-Les catégories couvrent des cas variés : simple (2), complexe (2), chiffrée (5), mixte (2), bruitée (2), hors sujet (2). Une fois la première évaluation calculée, le dataset n'est plus modifié.
+Les catégories couvrent des cas variés : simple (2), complexe (2), chiffrée (5), mixte (2), bruitée (2), hors sujet (2). Une fois la première évaluation calculée, le jeu de questions n'est plus modifié.
 
-> **Pourquoi figer le dataset ?**
-> Pour comparer deux versions du pipeline, il faut les mesurer sur les mêmes questions. Si le dataset change entre deux évaluations, on ne sait plus si l'écart vient du pipeline ou des questions.
+> **Pourquoi figer le jeu de questions ?**
+> Pour comparer deux versions du pipeline, il faut les mesurer sur les mêmes questions. Sinon, on ne sait plus si l'écart vient du pipeline ou des questions.
 
 Des exemples par catégorie :
 
-| Catégorie | Exemple du dataset | Ce que le cas teste |
+| Catégorie | Exemple | Ce que le cas teste |
 |---|---|---|
 | simple | « Pour quelle équipe joue Nikola Jokić d'après les données de la saison ? » | Lecture directe d'une information présente dans les contextes. |
 | complexe | « D'après les discussions Reddit, quels arguments pour et contre le tournoi play-in les fans avancent-ils ? » | Synthèse de plusieurs passages, sur des chunks bruités. |
 | chiffrée | « Quel joueur a le meilleur pourcentage à 3 points (3P%) cette saison ? » | Calcul d'un maximum — cas d'hallucination observé à l'audit. |
 | mixte | « Quel joueur a délivré le plus de passes décisives, et qu'est-ce que cela révèle de son rôle ? » | Un chiffre à trouver, puis une interprétation. |
-| bruitée | « kl vs okc stts rebnd lst 5 gm?? » | Robustesse face à une question mal écrite (abréviations, fautes). |
-| hors sujet | « Quelle est la recette de la ratatouille ? » | Garde-fou : le refus est attendu, pas une recette. |
+| bruitée | « kl vs okc stts rebnd lst 5 gm?? » | Robustesse face à une question mal écrite. |
+| hors sujet | « Quelle est la recette de la ratatouille ? » | Garde-fou : le refus est attendu. |
 
 ### Métriques
 
-RAGAS mesure automatiquement la qualité des réponses d'un RAG. Quatre métriques sont utilisées, chacune entre 0 et 1 :
+RAGAS mesure la qualité des réponses d'un RAG. Quatre métriques sont utilisées, chacune entre 0 et 1 :
 
-- **faithfulness** : la réponse est-elle appuyée par les contextes récupérés ? (mesure l'ancrage, c'est-à-dire l'absence d'invention) ;
-- **answer_relevancy** : la réponse répond-elle à la question posée ?
+- **faithfulness** : la réponse est-elle appuyée sur les contextes récupérés ? C'est l'ancrage ;
+- **answer_relevancy** : la réponse répond-elle à la question ?
 - **context_precision** : les contextes récupérés sont-ils pertinents ?
 - **context_recall** : les contextes couvrent-ils la réponse attendue ?
 
-Le « juge » qui attribue ces scores est lui-même un modèle de langage (`mistral-large-latest`). Il n'est pas déterministe : les scores varient d'un run à l'autre, même sans changer le pipeline. Les résultats se lisent donc comme des tendances, pas comme des valeurs exactes.
+Le juge qui attribue ces scores est lui-même un modèle de langage (`mistral-large-latest`). Ses scores varient d'un run à l'autre, même sans changer le pipeline. Les résultats se lisent donc comme des tendances.
 
 ---
 
-## 4. Évaluation baseline
+## 4. Évaluation RAG v1 — baseline
 
-Première évaluation du prototype, avant toute modification de la génération :
+Première évaluation du pipeline RAG v1 — baseline, avant toute modification de la génération :
 
 | Métrique | Score |
 |---|---:|
@@ -139,76 +156,61 @@ Première évaluation du prototype, avant toute modification de la génération 
 | `context_precision` | 0,3622 |
 | `context_recall` | 0,4000 |
 
-Lecture de ces chiffres :
+Lecture :
 
 - la **faithfulness est faible** : les réponses ne sont pas toujours assez appuyées sur les sources ;
-- l'**answer_relevancy est correcte**, mais elle ne suffit pas : une réponse peut sembler répondre à la question tout en étant mal appuyée ;
-- les **métriques de contexte** montrent que la récupération FAISS reste limitée : les bons passages ne sont pas toujours retrouvés, notamment pour les questions chiffrées.
+- l'**answer_relevancy est correcte**, mais ne suffit pas : une réponse peut sembler utile tout en étant mal ancrée ;
+- les **métriques de contexte** restent limitées : les bons passages ne sont pas toujours retrouvés, surtout pour les questions chiffrées.
 
-Le système fonctionne, mais il a des limites mesurables. C'est le point de départ pour les améliorations.
+Le système fonctionne, mais il a des limites mesurables. C'est le point de départ des améliorations.
 
 ---
 
-## 5. Modifications
+## 5. Passage à RAG v2 — contrôlé
 
-Trois renforts ont été ajoutés au pipeline, sans changer le modèle de génération ni la récupération FAISS : la validation des données (Pydantic), la génération structurée (Pydantic AI) et le traçage optionnel (Logfire).
+RAG v2 — contrôlé ajoute trois briques, sans changer le modèle de génération ni la récupération FAISS : validation des données avec Pydantic, génération structurée avec Pydantic AI, traçage optionnel avec Logfire.
 
 ### Pydantic
 
-Pydantic est une librairie de validation de données : on décrit la forme attendue d'un objet (champs, types, contraintes), et elle vérifie que les données respectent cette forme.
+Pydantic est une librairie de validation : on décrit la forme attendue d'un objet, elle vérifie que les données la respectent.
 
-Des modèles Pydantic ont été ajoutés dans `utils/schemas.py`. Ils valident les objets qui circulent dans le pipeline :
+Les modèles de `utils/schemas.py` valident les objets du pipeline :
 
 - les **documents** chargés (texte non vide, source connue) ;
-- les **chunks** indexés (identifiant, texte, métadonnées complètes) ;
-- les **contextes récupérés** par la recherche (texte, score de similarité, source) ;
-- la **réponse finale** (question, réponse non vide, liste des contextes utilisés).
+- les **chunks** indexés (identifiant, texte, métadonnées) ;
+- les **contextes récupérés** (texte, score, source) ;
+- la **réponse finale** (réponse non vide, contextes utilisés).
 
-Deux exemples concrets :
-
-- un contexte récupéré doit avoir un texte, un score et une source — sinon l'erreur est détectée à la recherche, pas plus tard ;
-- une réponse finale doit contenir une réponse non vide — une réponse vide est signalée au lieu de passer inaperçue.
-
-L'intérêt : les erreurs de structure sont détectées tôt, au moment où elles se produisent, plutôt que de se propager dans le pipeline.
+Les erreurs de structure sont ainsi détectées tôt, au lieu de se propager dans le pipeline.
 
 ### Pydantic AI
 
-La génération de la réponse a été centralisée dans `utils/rag_agent.py`, sous forme d'un agent Pydantic AI.
+La génération est centralisée dans `utils/rag_agent.py`, sous forme d'un agent Pydantic AI.
 
-Pydantic AI est une librairie qui encadre les appels à un modèle de langage : on déclare le type de sortie attendu, et la librairie force le modèle à produire une réponse dans ce format, puis la valide avec Pydantic.
+Pydantic AI encadre les appels au modèle : on déclare le type de sortie attendu, et la sortie est validée avec Pydantic. L'agent utilise Mistral (`mistral-small-latest`, température 0,1, même prompt que le prototype), reçoit la question et les contextes FAISS, et produit une sortie typée `RagAnswerOutput` (réponse non vide).
 
-Concrètement :
+Point important : `MistralChat.py` (l'application) et `scripts/evaluate_ragas.py` (l'évaluation) utilisent **le même agent**. L'évaluation mesure donc le même chemin de génération que l'application.
 
-- l'agent utilise Mistral (`mistral-small-latest`, température 0,1, même prompt que le prototype) ;
-- il reçoit la question et les contextes récupérés par FAISS ;
-- il produit une sortie typée `RagAnswerOutput` (une réponse non vide) ;
-- cette sortie est validée par Pydantic avant d'être utilisée.
-
-Point important : `MistralChat.py` (l'application) et `scripts/evaluate_ragas.py` (l'évaluation) utilisent **le même agent**. L'évaluation RAGAS mesure donc exactement le chemin de génération servi aux utilisateurs, pas une copie qui pourrait diverger.
-
-Pydantic AI ne rend pas le modèle « meilleur » en soi. Il rend la génération plus structurée et plus contrôlée : sortie au format garanti, validation systématique, code de génération unique. Une conséquence à connaître : si le modèle renvoie une réponse vide, l'agent lève une erreur au lieu de la laisser passer. Le script d'évaluation gère ce cas avec quelques ré-essais.
+Pydantic AI ne rend pas le modèle meilleur en soi. Il rend la génération plus structurée : sortie au format garanti, validation systématique, code unique. Si le modèle renvoie une réponse vide, l'agent lève une erreur ; le script d'évaluation gère ce cas avec quelques ré-essais.
 
 ### Logfire
 
-Logfire est un outil de traçage : il enregistre ce qui se passe pendant l'exécution (durées, étapes, erreurs) et l'affiche dans une interface web.
+Logfire est un outil de traçage : il enregistre ce qui se passe pendant l'exécution et l'affiche dans une interface web.
 
 Son intégration est optionnelle et non bloquante :
 
 - **sans token** (clé d'accès), l'application fonctionne normalement, rien n'est envoyé ;
-- **avec token**, les étapes clés sont tracées :
-  - la recherche vectorielle (question, nombre de contextes trouvés) ;
-  - la génération de la réponse (un span par question, appels Mistral inclus) ;
-  - l'évaluation RAGAS (un span englobant, un span par question évaluée).
+- **avec token**, les étapes clés sont tracées : recherche vectorielle, génération (un span par question, appels Mistral inclus), évaluation RAGAS.
 
-Cela aide à comprendre le comportement du pipeline : voir le temps passé par étape, repérer les erreurs (par exemple les réponses 429 de l'API), vérifier que la recherche retourne bien des contextes.
+Cela aide à comprendre le comportement du pipeline : temps passé par étape, erreurs API, contextes récupérés.
 
 ![baseline_logfire.png](img/baseline_logfire.png)
 
 ---
 
-## 6. Réévaluation
+## 6. Réévaluation RAG v2 — contrôlé
 
-Après ces modifications, l'évaluation a été relancée : même dataset, mêmes métriques, même juge. La génération passe désormais par l'agent Pydantic AI ; la récupération FAISS est inchangée.
+Après le passage à RAG v2 — contrôlé, l'évaluation a été relancée : mêmes questions, mêmes métriques, même juge. La génération passe par l'agent Pydantic AI ; la récupération FAISS est inchangée.
 
 ### Comparaison avant / après
 
@@ -223,18 +225,14 @@ Lecture :
 
 - la **faithfulness augmente** nettement : les réponses sont mieux appuyées sur les contextes ;
 - l'**answer_relevancy baisse légèrement** ;
-- la **context_precision est identique** et le **context_recall progresse légèrement** : c'est attendu, la récupération n'a pas changé (vérifié : les contextes récupérés sont identiques question par question) ;
-- comme la récupération est inchangée, l'évolution vient de la génération.
+- la **context_precision** est identique et le **context_recall** progresse légèrement : attendu, la récupération n'a pas changé (vérifié question par question) ;
+- l'évolution vient donc de la génération.
 
-Il faut rester prudent : le juge est un modèle de langage, ses scores varient d'un run à l'autre. Ce tableau compare un run avant et un run après. Il indique une tendance favorable sur l'ancrage, pas une preuve. La sous-section suivante mesure cette variabilité.
+Le juge varie d'un run à l'autre, et ce tableau compare un seul run de chaque version. Il indique une tendance favorable sur l'ancrage, pas une preuve. La sous-section suivante mesure cette variabilité.
 
 ### Robustesse des résultats
 
-Pour savoir si l'écart de faithfulness est un effet réel ou une variation du juge, l'évaluation a été relancée 5 fois pour chaque version du pipeline, dans les mêmes conditions : 5 runs avec l'ancienne génération (appel direct au modèle, sans agent), 5 runs avec l'agent Pydantic AI. Les 10 runs sont complets : 15/15 questions notées, 0 erreur.
-
-#### Les dix runs côte à côte
-
-`faithfulness` par run, avant (ancien pipeline) et après (agent Pydantic AI) :
+Pour mesurer la variabilité, l'évaluation a été relancée 5 fois pour chaque version du pipeline (runs indépendants, mêmes conditions). `faithfulness` par run :
 
 | Run | Avant (ancien pipeline) | Après (agent Pydantic AI) |
 |---|---:|---:|
@@ -247,77 +245,43 @@ Pour savoir si l'écart de faithfulness est un effet réel ou une variation du j
 | **Étendue** | 0,188–0,289 | 0,310–0,393 |
 | **Écart-type** | 0,040 | 0,036 |
 
-Précision de lecture : chaque colonne contient 5 runs indépendants ; les lignes ne se correspondent pas deux à deux (le « run 1 » avant n'a pas de lien avec le « run 1 » après).
-
-Le premier score observé après Pydantic AI (0,353) n'est pas un point isolé : il est proche de la moyenne des 5 runs. La variabilité reste réelle (environ ±0,04 autour de la moyenne) — d'où l'intérêt de comparer des moyennes plutôt que des runs isolés.
-
-#### Ce que montre la comparaison
-
-- Sur ces 10 runs, les deux groupes ne se recouvrent pas : le plus haut score de l'ancien pipeline (0,289) reste sous le plus bas score avec l'agent (0,310). La tendance en faveur d'un meilleur ancrage est donc nette, au-delà de la seule variation du juge.
-- En face, l'**answer_relevancy moyenne est plus basse avec l'agent** (≈ 0,50 contre ≈ 0,65 pour l'ancien pipeline). L'évolution n'est pas une amélioration uniforme : c'est un compromis. La sortie structurée semble pousser le modèle à coller aux sources (meilleur ancrage), au prix de réponses un peu moins directes.
-- Les métriques de contexte restent dans des plages comparables des deux côtés, ce qui est cohérent : la récupération est identique.
-
-#### Réserves de méthode
-
-- le nombre de runs est petit (5 + 5) : on parle de tendance, pas de preuve absolue ;
-- les runs ont été exécutés en deux blocs successifs (agent, puis ancien pipeline). Le modèle étant figé entre deux appels, une dérive entre les blocs est très improbable, mais une alternance des runs aurait été plus rigoureuse.
-
-> **Pourquoi ne pas sur-interpréter RAGAS ?**
-> Le juge RAGAS est un modèle de langage. Deux runs identiques donnent des scores différents (ici, jusqu'à ±0,04 sur la moyenne). On compare donc des moyennes et des plages sur plusieurs runs, et on lit les écarts comme des tendances. Une différence de quelques centièmes sur un seul run ne veut rien dire.
-
-Les fichiers détaillés de ces runs sont conservés localement (dossier `evaluation/results/variance_runs/`, non versionné).
+Ce test répond à la question laissée ouverte : la hausse de `faithfulness` (+0,10) est-elle un vrai effet ou une variation du juge ? C'est un vrai effet. La moyenne passe de 0,249 à 0,356, l'écart dépasse la variabilité du juge (±0,04), et les deux groupes ne se recouvrent pas : le plus haut score de l'ancien pipeline (0,289) reste sous le plus bas score avec l'agent (0,310). Le gain d'ancrage vient donc du changement de génération, pas du hasard du juge. En contrepartie, l'`answer_relevancy` moyenne baisse (≈ 0,50 contre ≈ 0,65) : des réponses plus collées aux sources, mais un peu moins directes. Avec 5 + 5 runs, on reste mesuré : tendance nette, pas preuve absolue.
 
 ### Limites restantes
 
-Après ces renforcements, les limites qui demeurent :
-
 - le RAG reste fragile pour les questions qui demandent un calcul exact (maximum, moyenne, classement) ;
-- FAISS cherche du texte proche d'une question. Il ne calcule pas une statistique : il ne remplacera jamais une requête sur des données structurées ;
-- les données Excel doivent être traitées avec une brique structurée pour répondre correctement aux questions chiffrées ;
-- les PDF OCR peuvent contenir du bruit, qui dégrade la qualité des chunks indexés ;
-- les questions hors sujet ne sont pas systématiquement refusées par le modèle ;
-- RAGAS dépend d'un juge LLM : les scores se lisent comme des tendances, sur plusieurs runs (voir « Robustesse des résultats »).
+- FAISS cherche du texte proche, il ne calcule pas : les données Excel demandent une brique structurée ;
+- les PDF OCR peuvent contenir du bruit ;
+- les questions hors sujet ne sont pas systématiquement refusées ;
+- RAGAS dépend d'un juge LLM : les scores se lisent comme des tendances.
 
 ---
 
-## 7. Renforcement SQL
+## 7. Préparation de RAG v3 — hybride SQL
 
-La prochaine amélioration consiste à charger le fichier Excel dans une base SQLite. L'objectif est de répondre aux questions chiffrées avec de vrais calculs. Cette étape a été préparée par une analyse du fichier ; le code sera réalisé dans une branche dédiée.
+RAG v3 — hybride SQL vise à compléter le RAG texte avec un accès structuré aux statistiques. Cette étape prépare cette version : le fichier Excel est chargé dans une base SQLite, puis interrogé avec un SQL Tool LangChain en lecture seule. Deux briques ont été réalisées : le pipeline d'ingestion (`scripts/load_excel_to_db.py`) et le SQL Tool (`utils/sql/sql_tool.py`).
 
 > **Pourquoi SQL est nécessaire ?**
-> La recherche vectorielle retrouve des passages proches de la question. Elle ne sait pas calculer un maximum, une moyenne ou un classement dans un tableau. Pour répondre « quel joueur a le meilleur pourcentage à 3 points ? », il faut interroger les données avec une vraie requête.
+> La recherche vectorielle retrouve des passages proches de la question. Elle ne sait pas calculer un maximum, une moyenne ou un classement. Pour répondre « quel joueur a le meilleur pourcentage à 3 points ? », il faut une vraie requête sur les données.
 
 ### Ce que contient le fichier Excel
 
-Le fichier `regular NBA.xlsx` a été inspecté feuille par feuille. Il contient :
-
 - **569 joueurs**, répartis dans **30 équipes** ;
-- **45 colonnes utiles** de statistiques (points, rebonds, passes, pourcentages de tir, etc.) ;
+- **45 colonnes utiles** de statistiques (points, rebonds, passes, pourcentages…) ;
 - 0 valeur manquante sur les colonnes utiles, 0 doublon de joueur ;
-- une feuille `Equipe` qui fournit un référentiel des 30 équipes (code et nom complet) ;
-- une feuille `Analyse` avec des blocs déjà préparés (résumé par équipe, top 15 des marqueurs).
+- une feuille `Equipe` (référentiel des 30 équipes) et une feuille `Analyse` (résumé par équipe, top 15 des marqueurs).
 
 Limite importante : le fichier ne contient **pas de matchs individuels**. Les statistiques sont agrégées au niveau joueur-saison.
 
 ### Schéma de base retenu
 
-Cinq tables sont prévues pour structurer les données :
+Cinq tables structurent les données :
 
-- `teams` : référentiel des équipes — table de support justifiée par la feuille `Equipe` ;
+- `teams` : référentiel des équipes (justifié par la feuille `Equipe`) ;
 - `players` : les joueurs, rattachés à leur équipe ;
-- `matches` : table volontairement minimaliste. Le fichier ne contient pas de matchs individuels ; elle représente donc le périmètre de la saison régulière, sans inventer de matchs ;
+- `matches` : table volontairement minimaliste — elle représente le périmètre de la saison régulière, sans inventer de matchs ;
 - `stats` : les statistiques de saison par joueur ;
-- `reports` : les blocs d'analyse textuels issus des feuilles `Analyse` et `Dictionnaire des données`.
-
-Relations principales :
-
-```mermaid
-flowchart LR
-    T["teams"] -->|"1 — N"| P["players"]
-    P -->|"1 — N"| S["stats"]
-    M["matches"] -->|"1 — N"| S
-    R["reports<br/>(table autonome)"]
-```
+- `reports` : les blocs d'analyse textuels de la feuille `Analyse`.
 
 ```mermaid
 erDiagram
@@ -357,20 +321,65 @@ erDiagram
     }
 ```
 
-### Garde-fous déjà identifiés
+Deux points repérés à l'analyse et traités dès l'import :
 
-L'analyse du fichier a fait remonter deux points à traiter dès l'import :
+- la colonne `3PM` est interprétée par Excel comme une heure (`15:00:00`) : elle est renommée à la lecture ;
+- les classements par pourcentage demandent un filtre de volume (au moins 100 tentatives), sinon un joueur à 1 tir réussi sur 1 apparaît à 100 %.
 
-- la colonne `3PM` (tirs à 3 points réussis) est interprétée par Excel comme une heure (`15:00:00`) : elle devra être renommée et convertie explicitement ;
-- pour les classements par pourcentage, un filtre de volume sera nécessaire (par exemple : au moins 100 tentatives). Sans ce filtre, un joueur avec 1 tir réussi sur 1 apparaît à 100 % et fausse la réponse.
+### Pipeline d'ingestion
 
-### Pipeline d'ingestion prévu
+Le pipeline est : `Excel → validation Pydantic → SQLite → requêtes de contrôle`. Chaque ligne est validée avant insertion (`utils/sql/schemas.py`). La base est générée localement :
 
-Le pipeline prévu est : `Excel → validation Pydantic → SQLite → requêtes SQL de contrôle`. Les lignes seront validées par des modèles Pydantic avant insertion. Cela prolonge le travail de sécurisation déjà fait sur le pipeline RAG.
+```bash
+poetry run python scripts/load_excel_to_db.py
+```
 
-`TODO : implémenter le pipeline SQL dans une branche dédiée, puis compléter cette section avec les résultats des requêtes de contrôle (nombre de joueurs, top des marqueurs, classement 3 points filtré).`
+Contrôles sur la base générée : 30 équipes, 569 joueurs, 569 lignes de statistiques, 1 ligne `matches`, 2 rapports ; 0 ligne orpheline, 0 violation de clé étrangère. Meilleur marqueur : Shai Gilgeous-Alexander (2 485 points). Meilleur 3P% avec au moins 100 tentatives : Seth Curry (45,6 %).
 
-`TODO : après intégration de l'outil SQL dans l'assistant, relancer l'évaluation RAGAS et ajouter le comparatif avant/après SQL.`
+### SQL Tool LangChain en lecture seule
+
+Le module `utils/sql/sql_tool.py` expose l'outil qui interroge cette base, en deux niveaux :
+
+- une fonction interne sécurisée, `run_read_only_query()`, qui contrôle puis exécute la requête ;
+- un vrai tool LangChain (`StructuredTool`), nommé `nba_sql_query`, avec un schéma d'entrée Pydantic (`query`, `params`, `limit`). C'est lui qui sera branché sur l'assistant.
+
+Règles de sécurité (lecture seule stricte) :
+
+- seules les requêtes `SELECT` (ou `WITH`) sont acceptées ;
+- les mots-clés d'écriture sont refusés (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `PRAGMA`…) ;
+- une seule requête à la fois : `SELECT …; DROP TABLE …` est refusé ;
+- le nombre de lignes retournées est plafonné (20 par défaut) ;
+- la connexion SQLite est ouverte en mode lecture seule : même une requête qui passerait les filtres ne pourrait pas écrire.
+
+Exemples de questions qui passeront par SQL :
+
+- « Quel joueur a marqué le plus de points ? »
+- « Qui a le meilleur pourcentage à 3 points avec au moins 100 tentatives ? »
+- « Combien de joueurs par équipe ? »
+- « Quelles sont les stats de Nikola Jokić ? »
+
+Les questions sur les documents (« que disent les fans sur les Lakers ? ») restent côté RAG texte.
+
+Exemple d'appel :
+
+```python
+sql_query_tool.invoke({
+    "query": "SELECT p.player_name, s.points FROM stats s "
+             "JOIN players p ON p.player_id = s.player_id "
+             "ORDER BY s.points DESC",
+    "limit": 2,
+})
+# [{'player_name': 'Shai Gilgeous-Alexander', 'points': 2485},
+#  {'player_name': 'Anthony Edwards', 'points': 2180}]
+```
+
+Le tool renvoie des données structurées ; l'assistant rédigera la réponse.
+
+Le module est couvert par 20 tests sans appel API (`tests/test_sql_tool.py`) : requêtes valides, refus d'écriture, plafond de lignes, erreurs propres, appel du tool via `.invoke(...)`.
+
+Limites : les requêtes SQL sont écrites à la main pour l'instant. Le routage automatique (choisir entre RAG texte et SQL, puis générer la requête) sera fait dans une tâche séparée.
+
+`TODO : après intégration de l'outil SQL dans l'assistant (routage), relancer l'évaluation RAGAS et ajouter le comparatif avant/après SQL.`
 
 ---
 
@@ -380,15 +389,13 @@ Le pipeline prévu est : `Excel → validation Pydantic → SQLite → requêtes
 
 Le prototype RAG fonctionne : il indexe les documents, retrouve des contextes et répond aux questions.
 
-L'évaluation a permis de mesurer ses limites. La première baseline RAGAS a montré un ancrage faible des réponses (`faithfulness` à 0,25) et a confirmé la fragilité des questions chiffrées.
+L'évaluation RAGAS a montré ses limites : ancrage faible (`faithfulness` à 0,25) et questions chiffrées fragiles.
 
-Pydantic et Pydantic AI ont renforcé la structure du pipeline : données validées, génération centralisée, sortie typée, même chemin de génération pour l'application et l'évaluation. Logfire ajoute une visibilité optionnelle sur l'exécution.
-
-Après ces changements, les résultats RAGAS montrent une amélioration de l'ancrage des réponses : `faithfulness` moyenne de 0,25 à 0,36 sur 5 runs. En contrepartie, la pertinence directe des réponses baisse. Ces résultats restent à lire comme une tendance, car le juge LLM varie d'un run à l'autre.
+RAG v2 — contrôlé renforce le pipeline avec Pydantic, Pydantic AI et Logfire. Après ces changements, la `faithfulness` moyenne passe de 0,25 à 0,36 sur 5 runs, avec une baisse de la pertinence directe. C'est une tendance à lire avec prudence : le juge varie d'un run à l'autre.
 
 ### Prochaine étape
 
-La limite principale reste les questions chiffrées. La recherche vectorielle ne calcule pas. La prochaine étape est donc l'ajout d'une base SQLite alimentée depuis le fichier Excel, puis d'un outil SQL pour l'assistant. Une nouvelle évaluation permettra ensuite de comparer le RAG seul et le RAG renforcé par SQL.
+La base SQLite et le SQL Tool en lecture seule sont prêts pour RAG v3 — hybride SQL. La prochaine étape est le routage : laisser l'assistant choisir entre RAG texte et SQL selon la question. Une nouvelle évaluation permettra ensuite de comparer RAG v2 — contrôlé et RAG v3 — hybride SQL.
 
 > **Ce qui a été volontairement exclu**
 > - pas de fine-tuning du modèle ;
@@ -400,6 +407,7 @@ La limite principale reste les questions chiffrées. La recherche vectorielle ne
 
 ### TODO avant version finale
 
-- [ ] Implémenter la brique SQL, puis compléter la section 7 (résultats des requêtes de contrôle).
+- [x] Implémenter la brique SQL (pipeline d'ingestion + SQL Tool en lecture seule) et compléter la section 7.
+- [ ] Brancher le routage RAG texte / SQL dans l'assistant (tâche séparée).
 - [ ] Ajouter le comparatif RAG seul vs RAG + SQL après la seconde évaluation (sections 7/8).
 - [ ] Relecture finale : vérifier que chaque affirmation reste appuyée par les résultats.

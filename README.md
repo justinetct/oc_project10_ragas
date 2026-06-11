@@ -22,6 +22,7 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
   - [Validation et génération structurée](#validation-et-génération-structurée)
   - [Baseline RAGAS](#baseline-ragas)
 - [Observabilité](#observabilité)
+- [SQL Tool LangChain (lecture seule)](#sql-tool-langchain-lecture-seule)
 
 ## Structure du dépôt
 
@@ -246,6 +247,7 @@ L'expérience montre une hausse de la `faithfulness` moyenne avec Pydantic AI, a
 
 Le détail complet est documenté dans le [rapport](docs/final_report.md#robustesse-des-résultats).
 
+
 ## Observabilité
 
 Logfire trace quelques étapes clés du pipeline : recherche vectorielle, génération de réponse RAG et calcul RAGAS.
@@ -262,3 +264,13 @@ LOGFIRE_ENVIRONMENT=local
 Les variables sont définies dans `.env.example` sans vraie valeur. Aucun secret ne doit être commité.
 
 Le rôle de Logfire dans le pipeline est détaillé dans le [rapport](docs/final_report.md#logfire).
+
+## SQL Tool LangChain (lecture seule)
+
+Pour les questions chiffrées (classement, maximum, statistiques d'un joueur), le projet fournit un SQL Tool LangChain en lecture seule : `nba_sql_query` (`utils/sql/sql_tool.py`).
+
+- Il interroge la base SQLite locale `data/nba.sqlite`, générée par `poetry run python scripts/load_excel_to_db.py`.
+- Il n'accepte que des requêtes `SELECT` : mots-clés d'écriture refusés, une seule requête à la fois, nombre de lignes plafonné, connexion ouverte en lecture seule.
+- Il complète le RAG texte sans le remplacer : FAISS reste utilisé pour les documents (Reddit/PDF). Le routage automatique entre RAG et SQL sera fait dans une étape séparée.
+
+Le détail (règles de sécurité, exemples de requêtes, limites) est dans le [rapport](docs/final_report.md#7-renforcement-sql) et dans `docs/sqlite_schema.md`.
