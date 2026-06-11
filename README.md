@@ -52,8 +52,7 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 ├── MistralChat.py               # Application Streamlit
 ├── poetry.lock                  # Versions verrouillées (reproductibilité)
 ├── pyproject.toml               # Dépendances et configuration Poetry
-├── README.md                    # Documentation principale
-└── requirements.txt             # Ancien fichier pip, conservé temporairement pendant la migration
+└── README.md                    # Documentation principale
 ```
 
 Le dossier `vector_db/` est généré localement par `python indexer.py`. Il n'est pas versionné car il peut être reconstruit à partir des fichiers présents dans `inputs/`.
@@ -62,8 +61,8 @@ Le dossier `vector_db/` est généré localement par `python indexer.py`. Il n'e
 ## Prérequis
 
 - Python 3.11 ou supérieur ;
-- [Poetry](https://python-poetry.org/) pour la gestion des dépendances ;
-- une clé API Mistral.
+- Poetry pour la gestion des dépendances ;
+- Une clé API Mistral.
 
 ## Installation
 
@@ -84,8 +83,6 @@ Renseigner la clé Mistral dans `.env` :
 ```env
 MISTRAL_API_KEY=your_mistral_api_key_here
 ```
-
-> Note : l'ancien `requirements.txt` est conservé temporairement pendant la migration vers Poetry. La référence des dépendances est désormais `pyproject.toml` / `poetry.lock`.
 
 ## Qualité de code
 

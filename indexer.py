@@ -3,7 +3,7 @@ import argparse
 import logging
 from typing import Optional
 
-from utils.config import INPUT_DIR # INPUT_DATA_URL (décommentez si besoin)
+from utils.config import INPUT_DIR
 from utils.data_loader import download_and_extract_zip, load_and_parse_files
 from utils.vector_store import VectorStoreManager
 
@@ -61,15 +61,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data-url",
         type=str,
-        # default=INPUT_DATA_URL, # Décommentez pour utiliser la valeur du .env par défaut
         default=None,
         help="URL optionnelle pour télécharger et extraire un fichier inputs.zip"
     )
     args = parser.parse_args()
 
-    # Vérifier si l'URL est passée en argument, sinon prendre celle du .env (si définie)
-    # final_data_url = args.data_url if args.data_url is not None else INPUT_DATA_URL
-    # Simplification: on utilise seulement l'argument --data-url pour l'instant
-    final_data_url = args.data_url
-
-    run_indexing(input_directory=args.input_dir, data_url=final_data_url)
+    run_indexing(input_directory=args.input_dir, data_url=args.data_url)

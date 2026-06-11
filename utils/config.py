@@ -64,11 +64,6 @@ LOGFIRE_BASE_URL = os.getenv("LOGFIRE_BASE_URL", "https://logfire-eu.pydantic.de
 # LOGFIRE_CONSOLE=true -> affiche AUSSI les traces dans le terminal (utile en démo).
 LOGFIRE_CONSOLE = os.getenv("LOGFIRE_CONSOLE", "").strip().lower() in ("1", "true", "yes")
 
-# --- Configuration de la Base de Données ---
-DATABASE_DIR = "database"
-DATABASE_FILE = os.path.join(DATABASE_DIR, "interactions.db")
-DATABASE_URL = f"sqlite:///{DATABASE_FILE}" # URL pour SQLAlchemy
-
 # --- Configuration de l'Application ---
 APP_TITLE = "NBA Analyst AI"
 NAME = "NBA" # Nom à personnaliser dans l'interface

@@ -4,7 +4,7 @@ import requests
 import zipfile
 import io
 from pathlib import Path
-from typing import List, Dict, Optional, Union
+from typing import Any, List, Dict, Optional, Union
 import logging
 import numpy as np
 from tqdm import tqdm # Ajout de tqdm
@@ -79,8 +79,8 @@ def extract_text_from_pdf(file_path: str) -> Optional[str]:
     """Extrait le texte d'un fichier PDF, avec fallback OCR si peu de texte est trouvé."""
     try:
         from PyPDF2 import PdfReader
-        reader = PdfReader(file_path)
-        text = "".join(page.extract_text() + "\n" for page in reader.pages if page.extract_text())
+        pdf_reader = PdfReader(file_path)
+        text = "".join(page.extract_text() + "\n" for page in pdf_reader.pages if page.extract_text())
 
         if len(text.strip()) < 100: # Si très peu de texte est extrait, tenter l'OCR
             logging.info(f"Peu de texte trouvé dans {file_path} via extraction standard ({len(text.strip())} caractères). Tentative d'OCR...")
@@ -208,7 +208,7 @@ def download_and_extract_zip(url: str, output_dir: str) -> bool:
         logging.error(f"Erreur inattendue lors du téléchargement/extraction: {e}")
         return False
 
-def load_and_parse_files(input_dir: str) -> List[Dict[str, any]]:
+def load_and_parse_files(input_dir: str) -> List[Dict[str, Any]]:
     """
     Charge et parse récursivement les fichiers d'un répertoire.
     Retourne une liste de dictionnaires, chacun représentant un document.

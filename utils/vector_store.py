@@ -5,7 +5,7 @@ import faiss
 import numpy as np
 import logging
 import logfire
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional
 from mistralai import Mistral
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document # Utilisé pour le format attendu par le splitter
@@ -23,7 +23,7 @@ class VectorStoreManager:
 
     def __init__(self):
         self.index: Optional[faiss.Index] = None
-        self.document_chunks: List[Dict[str, any]] = []
+        self.document_chunks: List[Dict[str, Any]] = []
         self.mistral_client = Mistral(api_key=MISTRAL_API_KEY)
         self._load_index_and_chunks()
 
@@ -53,7 +53,7 @@ class VectorStoreManager:
         self._load_index_and_chunks()
         return self.index is not None and bool(self.document_chunks)
 
-    def _split_documents_to_chunks(self, documents: List[Dict[str, any]]) -> List[Dict[str, any]]:
+    def _split_documents_to_chunks(self, documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Découpe les documents en chunks avec métadonnées."""
         logging.info(f"Découpage de {len(documents)} documents en chunks (taille={CHUNK_SIZE}, chevauchement={CHUNK_OVERLAP})...")
         text_splitter = RecursiveCharacterTextSplitter(
@@ -96,7 +96,7 @@ class VectorStoreManager:
         logging.info(f"Total de {len(all_chunks)} chunks créés.")
         return all_chunks
 
-    def _generate_embeddings(self, chunks: List[Dict[str, any]]) -> Optional[np.ndarray]:
+    def _generate_embeddings(self, chunks: List[Dict[str, Any]]) -> Optional[np.ndarray]:
         """Génère les embeddings pour une liste de chunks via l'API Mistral."""
         if not MISTRAL_API_KEY:
             logging.error("Impossible de générer les embeddings: MISTRAL_API_KEY manquante.")
@@ -144,7 +144,7 @@ class VectorStoreManager:
         logging.info(f"Embeddings générés avec succès. Shape: {embeddings_array.shape}")
         return embeddings_array
 
-    def build_index(self, documents: List[Dict[str, any]]):
+    def build_index(self, documents: List[Dict[str, Any]]):
         """Construit l'index Faiss à partir des documents."""
         if not documents:
             logging.warning("Aucun document fourni pour construire l'index.")
@@ -205,7 +205,7 @@ class VectorStoreManager:
         except Exception as e:
             logging.error(f"Erreur lors de la sauvegarde de l'index/chunks: {e}")
 
-    def search(self, query_text: str, k: int = 5, min_score: float = None) -> List[Dict[str, any]]:
+    def search(self, query_text: str, k: int = 5, min_score: float = None) -> List[Dict[str, Any]]:
         """
         Recherche les k chunks les plus pertinents pour une requête.
 
