@@ -6,6 +6,14 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 
 > Le rapport de mise en place et d'évaluation est disponible ici : [docs/final_report.md](docs/final_report.md).
 
+Versions repères :
+
+| Nom | Description | Tag Git prévu |
+|---|---|---|
+| **RAG v1 — baseline** | pipeline RAG initial | `rag-v1-baseline` |
+| **RAG v2 — contrôlé** | ajout de Pydantic, Pydantic AI et Logfire | `rag-v2-controlled` |
+| **RAG v3 — hybride SQL** | ajout de SQLite et du SQL Tool pour les questions chiffrées | `rag-v3-sql-hybrid` |
+
 ## Sommaire
 
 - [Structure du dépôt](#structure-du-dépôt)
@@ -20,7 +28,7 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
   - [Audit et limites](#audit-et-limites)
   - [Dataset d'évaluation](#dataset-dévaluation)
   - [Validation et génération structurée](#validation-et-génération-structurée)
-  - [Baseline RAGAS](#baseline-ragas)
+  - [Baseline RAGAS et versions repères](#baseline-ragas-et-versions-repères)
 - [Observabilité](#observabilité)
 - [SQL Tool LangChain (lecture seule)](#sql-tool-langchain-lecture-seule)
 
@@ -190,7 +198,7 @@ Il couvre plusieurs cas : questions simples, complexes, chiffrées, mixtes, brui
 
 *Une fois la baseline calculée, ce fichier ne doit plus être modifié.*
 
-La méthodologie d'évaluation est détaillée dans le [rapport](docs/final_report.md#évaluation-ragas).
+La méthodologie d'évaluation est détaillée dans le [rapport](docs/final_report.md#3-méthodologie-dévaluation).
 
 ### Validation et génération structurée
 
@@ -202,11 +210,11 @@ La génération finale est centralisée dans `utils/rag_agent.py`. L'agent Pydan
 
 Le même agent est utilisé par `MistralChat.py` et `scripts/evaluate_ragas.py`. L'évaluation mesure donc le même chemin de génération que l'application.
 
-Le fonctionnement et l'impact de cette modification sont expliqués dans le [rapport](docs/final_report.md#modifications).
+Le fonctionnement et l'impact de cette modification sont expliqués dans le [rapport](docs/final_report.md#5-passage-à-rag-v2--contrôlé).
 
-### Baseline RAGAS
+### Baseline RAGAS et versions repères
 
-Le script `scripts/evaluate_ragas.py` évalue l'assistant RAG sur le jeu de questions figé.
+Le script `scripts/evaluate_ragas.py` évalue l'assistant RAG sur le jeu de questions figé. Les résultats servent à comparer **RAG v1 — baseline**, **RAG v2 — contrôlé**, puis **RAG v3 — hybride SQL**.
 
 ```bash
 poetry run python scripts/evaluate_ragas.py
@@ -239,9 +247,9 @@ Scores moyens de la baseline actuelle (juge RAGAS `mistral-large-latest`, 15 que
 
 La `faithfulness` reste limitée : les réponses ne sont pas toujours assez ancrées dans les sources. Les scores varient d'un run à l'autre, car le juge RAGAS est aussi un LLM. Les valeurs exactes et le détail par catégorie sont disponibles dans `ragas_baseline_summary.json`.
 
-### Robustesse de la baseline
+### Robustesse RAG v1 / RAG v2
 
-Pour tenir compte de la variabilité du juge LLM, une expérience A/B a été menée sur 5 runs avec l'ancien pipeline et 5 runs avec l'agent Pydantic AI.
+Pour tenir compte de la variabilité du juge LLM, une expérience A/B a été menée sur 5 runs avec **RAG v1 — baseline** et 5 runs avec **RAG v2 — contrôlé**.
 
 L'expérience montre une hausse de la `faithfulness` moyenne avec Pydantic AI, avec une baisse de l'`answer_relevancy`. Les métriques de contexte restent proches, ce qui indique que l'écart vient surtout de la génération.
 
@@ -267,10 +275,10 @@ Le rôle de Logfire dans le pipeline est détaillé dans le [rapport](docs/final
 
 ## SQL Tool LangChain (lecture seule)
 
-Pour les questions chiffrées (classement, maximum, statistiques d'un joueur), le projet fournit un SQL Tool LangChain en lecture seule : `nba_sql_query` (`utils/sql/sql_tool.py`).
+Pour préparer **RAG v3 — hybride SQL**, le projet fournit un SQL Tool LangChain en lecture seule : `nba_sql_query` (`utils/sql/sql_tool.py`). Il sert aux questions chiffrées : classement, maximum, statistiques d'un joueur.
 
 - Il interroge la base SQLite locale `data/nba.sqlite`, générée par `poetry run python scripts/load_excel_to_db.py`.
 - Il n'accepte que des requêtes `SELECT` : mots-clés d'écriture refusés, une seule requête à la fois, nombre de lignes plafonné, connexion ouverte en lecture seule.
 - Il complète le RAG texte sans le remplacer : FAISS reste utilisé pour les documents (Reddit/PDF). Le routage automatique entre RAG et SQL sera fait dans une étape séparée.
 
-Le détail (règles de sécurité, exemples de requêtes, limites) est dans le [rapport](docs/final_report.md#7-renforcement-sql) et dans `docs/sqlite_schema.md`.
+Le détail (règles de sécurité, exemples de requêtes, limites) est dans le [rapport](docs/final_report.md#7-préparation-de-rag-v3--hybride-sql) et dans `docs/sqlite_schema.md`.
