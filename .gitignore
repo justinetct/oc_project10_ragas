@@ -32,6 +32,9 @@ vector_db/
 # Database (artefact local)
 database/
 
+# Base SQLite NBA (reconstructible via scripts/load_excel_to_db.py)
+data/
+
 # RAGAS — résultats partiels (checkpoints de test rapide, non versionnés)
 evaluation/results/ragas_baseline_results_partial.csv
 evaluation/results/ragas_baseline_summary_partial.json
