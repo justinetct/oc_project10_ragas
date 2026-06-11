@@ -4,6 +4,8 @@ Assistant d'analyse NBA basé sur une approche RAG (*Retrieval-Augmented Generat
 
 L'application permet d'interroger des sources documentaires NBA mixtes : archives Reddit extraites par OCR, documents PDF et fichier Excel de statistiques. Les documents sont indexés dans FAISS, puis interrogés via une interface Streamlit et un modèle Mistral.
 
+> Le rapport de mise en place et d'évaluation est disponible ici : [docs/final_report.md](docs/final_report.md).
+
 ## Sommaire
 
 - [Structure du dépôt](#structure-du-dépôt)
@@ -11,20 +13,24 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 - [Installation](#installation)
 - [Qualité de code](#qualité-de-code)
 - [Commandes utiles](#commandes-utiles)
-- [Indexation des documents](#indexation-des-documents)
-- [Lancement de l'application](#lancement-de-lapplication)
-- [Audit initial](#audit-initial)
-- [Dataset d'évaluation](#dataset-dévaluation)
-- [Validation et génération structurée (Pydantic)](#validation-et-génération-structurée-pydantic)
-- [Baseline RAGAS](#baseline-ragas)
-- [Observabilité (Logfire)](#observabilité-logfire)
+- [Utilisation](#utilisation)
+  - [Indexation des documents](#indexation-des-documents)
+  - [Lancement de l'application](#lancement-de-lapplication)
+- [Évaluation et résultats](#évaluation-et-résultats)
+  - [Audit et limites](#audit-et-limites)
+  - [Dataset d'évaluation](#dataset-dévaluation)
+  - [Validation et génération structurée](#validation-et-génération-structurée)
+  - [Baseline RAGAS](#baseline-ragas)
+- [Observabilité](#observabilité)
 
 ## Structure du dépôt
 
 ```text
 .
 ├── docs/
-│   └── audit_initial.md         # Synthèse de l'audit initial
+│   ├── audit_initial.md         # Synthèse de l'audit initial
+│   ├── final_report.md          # Rapport de mise en place et d'évaluation
+│   └── img/                     # Captures utilisées dans le rapport
 ├── evaluation/
 │   ├── evaluation_questions.csv # Dataset d'évaluation versionné
 │   └── results/                 # Résultats de la baseline RAGAS
@@ -58,6 +64,7 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 Le dossier `vector_db/` est généré localement par `python indexer.py`. Il n'est pas versionné car il peut être reconstruit à partir des fichiers présents dans `inputs/`.
 
 ---
+
 ## Prérequis
 
 - Python 3.11 ou supérieur ;
@@ -128,7 +135,9 @@ poetry run streamlit run MistralChat.py
 poetry run python evaluate_ragas.py
 ```
 
-## Indexation des documents
+## Utilisation
+
+### Indexation des documents
 
 Lancer l'indexation :
 
@@ -140,7 +149,7 @@ Cette commande lit les documents du dossier `inputs/`, extrait leur contenu, gé
 
 Lors du dernier audit, l'indexation a produit **302 chunks**.
 
-## Lancement de l'application
+### Lancement de l'application
 
 ```bash
 poetry run streamlit run MistralChat.py
@@ -152,77 +161,48 @@ L'application est ensuite accessible sur :
 http://localhost:8501
 ```
 
----
-## Audit initial
+## Évaluation et résultats
+
+### Audit et limites
 
 L'audit initial est disponible dans :
 
 - `notebooks/audit.ipynb` ;
 - `docs/audit_initial.md`.
 
-Il vérifie le fonctionnement des principaux composants : dépendances, données, index FAISS, API Mistral, recherche vectorielle et pipeline RAG complet.
+Il vérifie les composants principaux : données, index FAISS, API Mistral, recherche vectorielle et pipeline RAG complet.
 
-L'audit montre que l'application fonctionne techniquement, mais que les questions chiffrées restent une limite importante. Le système récupère des chunks proches dans l'index FAISS, puis le modèle reformule une réponse sans calcul structuré sur les données Excel.
+Le prototype fonctionne, mais les questions chiffrées restent fragiles. FAISS retrouve des passages proches, mais ne calcule pas une statistique dans le fichier Excel.
 
-Exemple observé : le modèle peut répondre **Shai Gilgeous-Alexander — 37,5 %** à la question du meilleur pourcentage à 3 points, alors qu'un extrait contient déjà **Nikola Jokić — 41,7 %**. Cela montre que la recherche vectorielle seule ne calcule pas réellement le maximum d'une colonne.
+Exemple observé : le modèle peut répondre **Shai Gilgeous-Alexander — 37,5 %** à la question du meilleur pourcentage à 3 points, alors qu'un extrait contient déjà **Nikola Jokić — 41,7 %**.
 
-### Limites
+Les limites principales sont résumées ici : OCR parfois bruité, Excel indexé comme texte, réponses parfois trop peu ancrées. Le détail est présenté dans le [rapport](docs/final_report.md#audit-initial-et-limites-observées).
 
-- Les PDF Reddit sont extraits par OCR, ce qui peut introduire du bruit dans le texte.
-- Le fichier Excel est indexé comme du texte brut, ce qui limite les calculs statistiques fiables.
-- Les réponses peuvent être plausibles mais insuffisamment ancrées dans les sources.
-- Les questions numériques nécessitent un traitement structuré complémentaire.
-
----
-## Dataset d'évaluation
+### Dataset d'évaluation
 
 Le fichier `evaluation/evaluation_questions.csv` contient le jeu de questions utilisé pour évaluer l'assistant RAG.
 
-Chaque ligne correspond à une question, avec sa catégorie, le comportement attendu, une réponse de référence courte, une indication de source et un champ `requires_sql_future`.
-
-Le dataset couvre plusieurs cas : questions simples, complexes, chiffrées, mixtes, bruitées et hors sujet. Il sert de base stable pour comparer la baseline RAGAS avec la future version améliorée par SQL.
+Il couvre plusieurs cas : questions simples, complexes, chiffrées, mixtes, bruitées et hors sujet. Il sert de base stable pour comparer les versions du pipeline.
 
 *Une fois la baseline calculée, ce fichier ne doit plus être modifié.*
 
----
-## Validation et génération structurée (Pydantic)
+La méthodologie d'évaluation est détaillée dans le [rapport](docs/final_report.md#évaluation-ragas).
 
-Le pipeline RAG utilise **Pydantic** et **Pydantic AI** pour sécuriser les données manipulées par le prototype et structurer la réponse produite par le LLM.
+### Validation et génération structurée
 
-### Pydantic : validation des objets du pipeline
+Le pipeline RAG utilise **Pydantic** et **Pydantic AI** pour valider les données et structurer la réponse du LLM.
 
-Les modèles définis dans `utils/schemas.py` décrivent les principaux objets qui circulent dans le pipeline RAG :
+Les modèles Pydantic sont définis dans `utils/schemas.py`. Ils valident les documents, les chunks, les contextes récupérés et les réponses.
 
-- documents chargés depuis les sources ;
-- chunks indexés dans FAISS ;
-- contextes récupérés avec leur score ;
-- réponse finale associée à la question et aux contextes utilisés.
+La génération finale est centralisée dans `utils/rag_agent.py`. L'agent Pydantic AI reçoit la question et les contextes FAISS, puis renvoie une sortie typée `RagAnswerOutput`.
 
-Cette validation permet de détecter plus tôt les incohérences de structure, les champs manquants ou les réponses vides.
+Le même agent est utilisé par `MistralChat.py` et `evaluate_ragas.py`. L'évaluation mesure donc le même chemin de génération que l'application.
 
-### Pydantic AI : génération à sortie typée
+Le fonctionnement et l'impact de cette modification sont expliqués dans le [rapport](docs/final_report.md#modifications).
 
-La génération de la réponse finale est centralisée dans `utils/rag_agent.py` avec un **agent Pydantic AI** basé sur Mistral.
+### Baseline RAGAS
 
-L'agent reçoit :
-
-- la question utilisateur ;
-- les contextes récupérés par FAISS ;
-- un prompt RAG commun à l'application et à l'évaluation.
-
-Il renvoie une sortie typée `RagAnswerOutput`, validée par Pydantic, avec une réponse non vide. Cette sortie est ensuite compatible avec le modèle `RagAnswer` utilisé dans le reste du pipeline.
-
-Le même agent est utilisé dans :
-
-- `MistralChat.py` pour l'application Streamlit ;
-- `evaluate_ragas.py` pour la baseline RAGAS.
-
-Ainsi, l'évaluation mesure le même chemin de génération que celui utilisé par l'application.
-
----
-## Baseline RAGAS
-
-Le script `evaluate_ragas.py` évalue l'assistant RAG sur le dataset figé.
+Le script `evaluate_ragas.py` évalue l'assistant RAG sur le jeu de questions figé.
 
 ```bash
 poetry run python evaluate_ragas.py
@@ -236,7 +216,6 @@ Les métriques utilisées sont :
 - `answer_relevancy` — la réponse répond-elle réellement à la question ?
 - `context_precision` — les contextes récupérés sont-ils pertinents au regard de la référence ?
 - `context_recall` — la référence est-elle couverte par les contextes récupérés ?
-
 
 Les résultats sont écrits dans `evaluation/results/` :
 
@@ -254,21 +233,21 @@ Scores moyens de la baseline actuelle (juge RAGAS `mistral-large-latest`, 15 que
 | `context_precision` | 0,36 |
 | `context_recall` | 0,43 |
 
-La faible `faithfulness` confirme que les réponses restent insuffisamment ancrées dans les sources. Ces scores varient de ~0,04 à 0,08 d'un run à l'autre (juge LLM non déterministe) : on ne les sur-interprète donc pas à la 2ᵉ décimale. Valeurs exactes et détail par catégorie dans `ragas_baseline_summary.json`.
+La `faithfulness` reste limitée : les réponses ne sont pas toujours assez ancrées dans les sources. Les scores varient d'un run à l'autre, car le juge RAGAS est aussi un LLM. Les valeurs exactes et le détail par catégorie sont disponibles dans `ragas_baseline_summary.json`.
 
 ### Robustesse de la baseline
 
-Pour tenir compte de la variabilité du juge LLM, une expérience A/B a été menée sur 5 runs avec l'agent Pydantic AI et 5 runs avec l'ancien pipeline de génération directe.
+Pour tenir compte de la variabilité du juge LLM, une expérience A/B a été menée sur 5 runs avec l'ancien pipeline et 5 runs avec l'agent Pydantic AI.
 
-L'expérience montre que l'agent Pydantic AI améliore la `faithfulness` moyenne, mais réduit l'`answer_relevancy`. Les métriques de contexte restent stables, ce qui confirme que la différence vient de la génération et non de la récupération FAISS.
+L'expérience montre une hausse de la `faithfulness` moyenne avec Pydantic AI, avec une baisse de l'`answer_relevancy`. Les métriques de contexte restent proches, ce qui indique que l'écart vient surtout de la génération.
 
-Le détail complet de l'expérience est documenté dans le rapport final.
----
-## Observabilité (Logfire)
+Le détail complet est documenté dans le [rapport](docs/final_report.md#robustesse-des-résultats).
 
-Logfire est utilisé pour tracer quelques étapes clés du pipeline : recherche vectorielle, génération de réponse RAG et calcul RAGAS.
+## Observabilité
 
-L'observabilité est **optionnelle** : sans `LOGFIRE_TOKEN`, l'application fonctionne normalement en mode local silencieux.
+Logfire trace quelques étapes clés du pipeline : recherche vectorielle, génération de réponse RAG et calcul RAGAS.
+
+L'observabilité est **optionnelle** : sans `LOGFIRE_TOKEN`, l'application fonctionne normalement.
 
 Pour l'activer, ajouter les variables suivantes dans `.env` :
 
@@ -278,3 +257,5 @@ LOGFIRE_ENVIRONMENT=local
 ```
 
 Les variables sont définies dans `.env.example` sans vraie valeur. Aucun secret ne doit être commité.
+
+Le rôle de Logfire dans le pipeline est détaillé dans le [rapport](docs/final_report.md#logfire).
