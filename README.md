@@ -43,6 +43,9 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 ├── notebooks/
 │   ├── audit.ipynb              # Notebook d'audit initial
 │   └── ragas_baseline_results.ipynb  # Illustration de la baseline RAGAS
+├── scripts/
+│   ├── evaluate_ragas.py        # Baseline RAGAS du prototype sur le dataset
+│   └── load_excel_to_db.py      # Construit la base SQLite NBA depuis l'Excel
 ├── tests/                       # Tests qualité et validation
 ├── utils/
 │   ├── config.py                # Configuration des chemins et variables d'environnement
@@ -50,10 +53,10 @@ L'application permet d'interroger des sources documentaires NBA mixtes : archive
 │   ├── observability.py         # Configuration optionnelle de Logfire
 │   ├── rag_agent.py             # Agent Pydantic AI : génération de la réponse à sortie typée
 │   ├── schemas.py               # Modèles Pydantic (validation du pipeline RAG)
+│   ├── sql/                     # Base SQLite NBA : modèles, chargement Excel, requêtes
 │   └── vector_store.py          # Création et interrogation de l'index FAISS
 ├── .env.example                 # Exemple de configuration sans clé réelle
 ├── .gitignore                   # Fichiers locaux exclus du versionnement
-├── evaluate_ragas.py            # Baseline RAGAS du prototype sur le dataset
 ├── indexer.py                   # Script d'indexation des documents
 ├── MistralChat.py               # Application Streamlit
 ├── poetry.lock                  # Versions verrouillées (reproductibilité)
@@ -97,7 +100,7 @@ Trois contrôles simples permettent d'éviter de casser le prototype entre deux 
 
 ```bash
 # Compilation : vérifie la syntaxe de tous les modules
-poetry run python -m compileall MistralChat.py indexer.py utils notebooks tests evaluate_ragas.py
+poetry run python -m compileall MistralChat.py indexer.py scripts utils notebooks tests
 
 # Linter
 poetry run ruff check .
@@ -132,7 +135,7 @@ poetry run python indexer.py
 poetry run streamlit run MistralChat.py
 
 # Lancer la baseline RAGAS
-poetry run python evaluate_ragas.py
+poetry run python scripts/evaluate_ragas.py
 ```
 
 ## Utilisation
@@ -196,16 +199,16 @@ Les modèles Pydantic sont définis dans `utils/schemas.py`. Ils valident les do
 
 La génération finale est centralisée dans `utils/rag_agent.py`. L'agent Pydantic AI reçoit la question et les contextes FAISS, puis renvoie une sortie typée `RagAnswerOutput`.
 
-Le même agent est utilisé par `MistralChat.py` et `evaluate_ragas.py`. L'évaluation mesure donc le même chemin de génération que l'application.
+Le même agent est utilisé par `MistralChat.py` et `scripts/evaluate_ragas.py`. L'évaluation mesure donc le même chemin de génération que l'application.
 
 Le fonctionnement et l'impact de cette modification sont expliqués dans le [rapport](docs/final_report.md#modifications).
 
 ### Baseline RAGAS
 
-Le script `evaluate_ragas.py` évalue l'assistant RAG sur le jeu de questions figé.
+Le script `scripts/evaluate_ragas.py` évalue l'assistant RAG sur le jeu de questions figé.
 
 ```bash
-poetry run python evaluate_ragas.py
+poetry run python scripts/evaluate_ragas.py
 ```
 
 Prérequis : un fichier `.env` avec `MISTRAL_API_KEY` et un index FAISS déjà construit (`poetry run python indexer.py`).

@@ -1,4 +1,4 @@
-"""evaluate_ragas.py — Baseline RAGAS du prototype RAG NBA.
+"""scripts/evaluate_ragas.py — Baseline RAGAS du prototype RAG NBA.
 
 Ce script mesure les performances du prototype RAG **actuel** sur le jeu
 d'évaluation figé `evaluation/evaluation_questions.csv`. Il :
@@ -29,6 +29,10 @@ Remarques
 
 import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")  # macOS : évite un crash OpenMP (faiss)
+
+import sys
+# Lancement direct du script : ajoute la racine du projet au path pour importer utils.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import warnings
 # RAGAS affiche des warnings de dépréciation pour l'API evaluate().

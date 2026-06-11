@@ -93,7 +93,7 @@ L'interface utilisateur est une application Streamlit (`MistralChat.py`). L'inde
 
 ## 3. Évaluation RAGAS
 
-Pour mesurer objectivement le comportement du prototype, une évaluation automatique a été mise en place avec RAGAS. Le script `evaluate_ragas.py` exécute le vrai pipeline de l'application sur chaque question, puis calcule les métriques. Les résultats sont écrits dans `evaluation/results/`.
+Pour mesurer objectivement le comportement du prototype, une évaluation automatique a été mise en place avec RAGAS. Le script `scripts/evaluate_ragas.py` exécute le vrai pipeline de l'application sur chaque question, puis calcule les métriques. Les résultats sont écrits dans `evaluation/results/`.
 
 ### Jeu de questions
 
@@ -184,7 +184,7 @@ Concrètement :
 - il produit une sortie typée `RagAnswerOutput` (une réponse non vide) ;
 - cette sortie est validée par Pydantic avant d'être utilisée.
 
-Point important : `MistralChat.py` (l'application) et `evaluate_ragas.py` (l'évaluation) utilisent **le même agent**. L'évaluation RAGAS mesure donc exactement le chemin de génération servi aux utilisateurs, pas une copie qui pourrait diverger.
+Point important : `MistralChat.py` (l'application) et `scripts/evaluate_ragas.py` (l'évaluation) utilisent **le même agent**. L'évaluation RAGAS mesure donc exactement le chemin de génération servi aux utilisateurs, pas une copie qui pourrait diverger.
 
 Pydantic AI ne rend pas le modèle « meilleur » en soi. Il rend la génération plus structurée et plus contrôlée : sortie au format garanti, validation systématique, code de génération unique. Une conséquence à connaître : si le modèle renvoie une réponse vide, l'agent lève une erreur au lieu de la laisser passer. Le script d'évaluation gère ce cas avec quelques ré-essais.
 
