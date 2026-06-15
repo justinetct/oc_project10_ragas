@@ -16,12 +16,16 @@
    - [Comparaison avant / après](#comparaison-avant--après)
    - [Robustesse des résultats](#robustesse-des-résultats)
    - [Limites restantes](#limites-restantes)
-7. [Préparation de RAG v3 — hybride SQL](#7-préparation-de-rag-v3--hybride-sql)
+7. [RAG v3 — hybride SQL](#7-rag-v3--hybride-sql)
    - [Ce que contient le fichier Excel](#ce-que-contient-le-fichier-excel)
    - [Schéma de base retenu](#schéma-de-base-retenu)
    - [Pipeline d'ingestion](#pipeline-dingestion)
    - [SQL Tool LangChain en lecture seule](#sql-tool-langchain-en-lecture-seule)
+   - [Routage intégré](#routage-intégré--lassistant-choisit-son-chemin)
+   - [Résultats du routage](#résultats--avant--après-routage)
+   - [Choix du mode hybride](#choix-du-mode-hybride)
 8. [Conclusion](#8-conclusion)
+- [Annexe — exemples de requêtes SQL](#annexe--exemples-de-requêtes-sql)
 
 ---
 
@@ -257,9 +261,9 @@ Ce test répond à la question laissée ouverte : la hausse de `faithfulness` (+
 
 ---
 
-## 7. Préparation de RAG v3 — hybride SQL
+## 7. RAG v3 — hybride SQL
 
-RAG v3 — hybride SQL vise à compléter le RAG texte avec un accès structuré aux statistiques. Cette étape prépare cette version : le fichier Excel est chargé dans une base SQLite, puis interrogé avec un SQL Tool LangChain en lecture seule. Deux briques ont été réalisées : le pipeline d'ingestion (`scripts/load_excel_to_db.py`) et le SQL Tool (`utils/sql/sql_tool.py`).
+RAG v3 — hybride SQL complète le RAG texte avec un accès structuré aux statistiques. Le fichier Excel est chargé dans une base SQLite, interrogée avec un SQL Tool LangChain en lecture seule. Le routeur oriente chaque question vers le bon traitement : RAG texte, SQL, réponse hybride ou refus hors périmètre.
 
 > **Pourquoi SQL est nécessaire ?**
 > La recherche vectorielle retrouve des passages proches de la question. Elle ne sait pas calculer un maximum, une moyenne ou un classement. Pour répondre « quel joueur a le meilleur pourcentage à 3 points ? », il faut une vraie requête sur les données.
@@ -279,7 +283,7 @@ Cinq tables structurent les données :
 
 - `teams` : référentiel des équipes (justifié par la feuille `Equipe`) ;
 - `players` : les joueurs, rattachés à leur équipe ;
-- `matches` : table volontairement minimaliste — elle représente le périmètre de la saison régulière, sans inventer de matchs ;
+- `matches` : table minimaliste — elle représente le périmètre de la saison régulière, sans inventer de matchs ;
 - `stats` : les statistiques de saison par joueur ;
 - `reports` : les blocs d'analyse textuels de la feuille `Analyse`.
 
@@ -321,10 +325,11 @@ erDiagram
     }
 ```
 
-Deux points repérés à l'analyse et traités dès l'import :
+Trois points repérés à l'analyse et traités dès l'import :
 
 - la colonne `3PM` est interprétée par Excel comme une heure (`15:00:00`) : elle est renommée à la lecture ;
-- les classements par pourcentage demandent un filtre de volume (au moins 100 tentatives), sinon un joueur à 1 tir réussi sur 1 apparaît à 100 %.
+- les classements par pourcentage demandent un filtre de volume (au moins 100 tentatives), sinon un joueur à 1 tir réussi sur 1 apparaît à 100 % ;
+- les pourcentages sont stockés tels quels (`37.5` pour 37,5 %), sans conversion.
 
 ### Pipeline d'ingestion
 
@@ -379,21 +384,33 @@ Le module est couvert par 20 tests sans appel API (`tests/test_sql_tool.py`) : r
 
 ### Routage intégré : l'assistant choisit son chemin
 
-Le routage automatique est maintenant branché, dans l'application comme dans l'évaluation. Le module `utils/router.py` classe chaque question par des règles de mots-clés explicites — aucun appel LLM pour router — vers quatre chemins :
+Le module `utils/router.py` classe chaque question vers quatre chemins, utilisés à la fois par l'application et par l'évaluation :
 
 | Route | Cas | Traitement |
 |---|---|---|
-| `rag` | documents, opinions, discussions Reddit | FAISS + génération (chemin v2 inchangé) |
-| `sql` | question chiffrée (classement, maximum, total, fiche joueur…) | requête prédéfinie via le SQL Tool, réponse directe sans LLM |
-| `hybrid` | chiffre + interprétation demandés ensemble | SQL d'abord (le chiffre fait foi), rédaction LLM ensuite |
+| `rag` | documents, opinions, discussions Reddit | FAISS + génération |
+| `sql` | question chiffrée | requête contrôlée via le SQL Tool |
+| `hybrid` | chiffre + interprétation | SQL d'abord, puis rédaction LLM |
 | `out_of_scope` | hors NBA / hors sources | refus poli, aucun appel externe |
 
-Deux choix structurants côté risque :
+Pour les questions chiffrées, le code suit un pipeline contrôlé et traçable :
 
-- **aucun SQL libre** : la route `sql` s'appuie sur un mapping de requêtes prédéfinies (`utils/sql/nba_intents.py`, colonnes sur liste blanche) exécutées par le SQL Tool en lecture seule, qui reste l'unique couche d'exécution. Une question chiffrée hors couverture reçoit une réponse honnête « non pris en charge » plutôt qu'un résultat inventé ;
-- **un seul pipeline** : `MistralChat.py` et `scripts/evaluate_ragas.py` passent par la même fonction `answer_question()`. L'évaluation mesure donc exactement ce que les utilisateurs utilisent.
+```text
+détecter le cas spécial éventuel
+sinon détecter la métrique demandée
+sinon détecter le sens du classement
+construire une requête SQL sûre
+exécuter via le SQL Tool
+formater la réponse en français
+```
 
-L'évaluation porte sur le jeu figé E01–E15, inchangé depuis la baseline : c'est le même jeu que pour v1 et v2, ce qui rend la comparaison avant/après directe et reproductible avec `poetry run python scripts/evaluate_ragas.py`.
+Ce découpage rend le comportement transparent sans ouvrir de génération SQL libre. Les colonnes autorisées viennent d'une liste blanche, le sens du tri est limité à deux constantes internes (`ASC` ou `DESC`), et les noms de joueurs passent en paramètres SQL. Le SQL Tool en lecture seule reste l'unique couche d'exécution.
+
+Une question chiffrée hors couverture reçoit une réponse honnête « non pris en charge » plutôt qu'un résultat inventé.
+
+L'application (`MistralChat.py`) et l'évaluation (`scripts/evaluate_ragas.py`) passent par la même fonction `answer_question()`. L'évaluation mesure donc exactement le même chemin que celui utilisé par l'interface.
+
+L'évaluation officielle porte sur le jeu figé E01–E15, inchangé depuis la baseline. Un petit jeu étendu E16–E20 a aussi été créé pour tester plus spécifiquement le routage et les modes hybrides, mais il est analysé séparément.
 
 ### Résultats : avant / après routage
 
@@ -431,12 +448,12 @@ Des runs répétés (3 runs `sql_only`, 2 runs `sql_with_rag_context`) montrent 
 
 L'écart résiduel (+0,03) est plus petit que les oscillations du juge sur une même question d'un run à l'autre. Les deux modes sont donc **statistiquement indistinguables** sur la fidélité.
 
-**Choix retenu : `sql_only` par défaut.** À fidélité équivalente, c'est le mode le plus simple (pas d'appel FAISS supplémentaire sur les questions hybrides), le moins coûteux et le plus facile à expliquer : le chiffre SQL est la source de vérité, on ne lui adjoint pas un contexte texte dont l'apport n'est pas mesurable. Le mode `sql_with_rag_context` reste disponible (`HYBRID_MODE=sql_with_rag_context`) pour les cas où l'interprétation gagnerait à s'appuyer sur les discussions Reddit, mais il n'est pas activé par défaut.
+**Choix retenu : `sql_only` par défaut.** À fidélité équivalente, c'est le mode le plus stable, le moins coûteux et le plus facile à expliquer. Le chiffre SQL reste la source de vérité, et aucun contexte texte supplémentaire n'est ajouté quand son apport n'est pas mesurable. Le mode `sql_with_rag_context` reste disponible par configuration (`HYBRID_MODE=sql_with_rag_context`), mais il n'est pas activé par défaut.
 
 ### Limites du routage actuel
 
-- routage par mots-clés : robuste sur le jeu testé, mais une question très déformée peut être mal classée (E12 reste en `rag`) ;
-- couverture SQL volontairement bornée aux requêtes prédéfinies : pas de NL→SQL libre, donc pas de réponse aux agrégats non prévus (ex. splits domicile/extérieur, absents de la base) — l'assistant le dit explicitement ;
+- routage par règles : robuste sur le jeu testé, mais une question très déformée peut être mal classée (E12 reste en `rag`) ;
+- couverture SQL bornée aux requêtes prédéfinies : pas de NL→SQL libre, donc pas de réponse aux agrégats non prévus (ex. splits domicile/extérieur, absents de la base) — l'assistant le dit explicitement ;
 - RAGAS juge mal deux familles de réponses correctes : les refus (hors-sujet, note 0 par construction) et les réponses interprétatives des questions mixtes ; le comparatif chiffré est donc complété d'une lecture qualitative des réponses, en particulier sur les questions mixtes.
 
 ---
@@ -451,13 +468,13 @@ L'évaluation RAGAS a montré ses limites : ancrage faible (`faithfulness` à 0,
 
 RAG v2 — contrôlé renforce le pipeline avec Pydantic, Pydantic AI et Logfire. Après ces changements, la `faithfulness` moyenne passe de 0,25 à 0,36 sur 5 runs, avec une baisse de la pertinence directe. C'est une tendance à lire avec prudence : le juge varie d'un run à l'autre.
 
-RAG v3 — hybride SQL branche le routage automatique : RAG texte pour le documentaire, requêtes SQL prédéfinies pour le chiffré, combinaison des deux pour les questions mixtes, refus hors périmètre. Sur le jeu figé E01–E15, le routage fait passer la `faithfulness` moyenne de 0,37 à 0,47–0,48 et la pertinence des réponses de 0,44 à 0,61–0,67, avec des gains concentrés exactement là où le RAG seul échouait : questions chiffrées et questions bruitées à intention chiffrée.
+RAG v3 — hybride SQL utilise un routage en quatre chemins : RAG texte pour le documentaire, requêtes SQL prédéfinies pour le chiffré, réponse hybride pour les questions mixtes, refus hors périmètre. Sur le jeu figé E01–E15, le routage fait passer la `faithfulness` moyenne de 0,37 à 0,47–0,48 et la pertinence des réponses de 0,44 à 0,61–0,67, avec des gains concentrés exactement là où le RAG seul échouait : questions chiffrées et questions bruitées à intention chiffrée.
 
 ### Prochaine étape
 
-Le choix par défaut du mode hybride (`sql_only` vs `sql_with_rag_context`) est en cours de validation par des runs de variance. Au-delà, deux pistes naturelles : élargir la couverture des requêtes prédéfinies (nouvelles intentions chiffrées) et remplacer le routage par mots-clés par un classifieur plus robuste si le besoin apparaît à l'usage — sans jamais ouvrir de génération SQL libre.
+Le choix par défaut du mode hybride est maintenant fixé à `sql_only`, après comparaison avec `sql_with_rag_context`. Les prochaines pistes seraient d'élargir la couverture des intentions chiffrées et de remplacer le routage par règles par un classifieur plus robuste si le besoin apparaît à l'usage, tout en conservant le principe de sécurité : pas de génération SQL libre.
 
-> **Ce qui a été volontairement exclu**
+> **Ce qui est exclu du périmètre**
 > - pas de fine-tuning du modèle ;
 > - pas de changement du modèle principal de génération ;
 > - pas de modification du jeu de questions après la baseline ;
@@ -468,6 +485,28 @@ Le choix par défaut du mode hybride (`sql_only` vs `sql_with_rag_context`) est 
 ### TODO avant version finale
 
 - [x] Implémenter la brique SQL (pipeline d'ingestion + SQL Tool en lecture seule) et compléter la section 7.
-- [ ] Brancher le routage RAG texte / SQL dans l'assistant (tâche séparée).
-- [ ] Ajouter le comparatif RAG seul vs RAG + SQL après la seconde évaluation (sections 7/8).
+- [x] Intégrer le routage RAG texte / SQL dans l'assistant.
+- [x] Ajouter le comparatif RAG seul vs RAG + SQL après évaluation.
 - [ ] Relecture finale : vérifier que chaque affirmation reste appuyée par les résultats.
+
+---
+
+## Annexe — exemples de requêtes SQL
+
+Quelques requêtes types sur la base `data/nba.sqlite`, pour illustrer ce que le SQL Tool exécute (lecture seule) :
+
+```sql
+-- Nombre de joueurs (attendu : 569)
+SELECT COUNT(*) FROM players;
+
+-- Top 10 des marqueurs
+SELECT p.player_name, p.team_code, s.points
+FROM stats s JOIN players p ON p.player_id = s.player_id
+ORDER BY s.points DESC LIMIT 10;
+
+-- Meilleur 3P% avec filtre de volume (évite l'artefact d'un joueur à 1 tir sur 1)
+SELECT p.player_name, s.three_point_pct, s.three_points_attempted
+FROM stats s JOIN players p ON p.player_id = s.player_id
+WHERE s.three_points_attempted >= 100
+ORDER BY s.three_point_pct DESC LIMIT 5;
+```

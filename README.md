@@ -2,9 +2,7 @@
 
 Assistant d'analyse NBA basé sur une approche RAG (*Retrieval-Augmented Generation*).
 
-L'application permet d'interroger des sources documentaires NBA mixtes : archives Reddit extraites par OCR, documents PDF et fichier Excel de statistiques. Les documents sont indexés dans FAISS, puis interrogés via une interface Streamlit et un modèle Mistral.
-
-> Le rapport de mise en place et d'évaluation est disponible ici : [docs/final_report.md](docs/final_report.md).
+L'application permet d'interroger des sources NBA mixtes : archives Reddit extraites par OCR, documents PDF et fichier Excel de statistiques. Les documents texte sont indexés dans FAISS ; les statistiques Excel sont chargées dans SQLite pour les questions chiffrées. L'ensemble est accessible via une interface Streamlit et un modèle Mistral.
 
 Versions repères :
 
@@ -12,7 +10,7 @@ Versions repères :
 |---|---|---|
 | **RAG v1 — baseline** | pipeline RAG initial | `rag-v1-baseline` |
 | **RAG v2 — contrôlé** | ajout de Pydantic, Pydantic AI et Logfire | `rag-v2-controlled` |
-| **RAG v3 — hybride SQL** | ajout de SQLite et du SQL Tool pour les questions chiffrées | `rag-v3-sql-hybrid` |
+| **RAG v3 — hybride SQL** | routage RAG / SQL avec SQLite et SQL Tool pour les questions chiffrées | `rag-v3-sql-hybrid` |
 
 ## Sommaire
 
@@ -40,8 +38,7 @@ Versions repères :
 ├── docs/
 │   ├── audit_initial.md         # Synthèse de l'audit initial
 │   ├── final_report.md          # Rapport de mise en place et d'évaluation
-│   ├── routing.md               # Routes RAG / SQL / hybride (référence)
-│   ├── sqlite_schema.md         # Schéma de la base SQLite NBA
+│   ├── routing.md               # Détail du routage RAG / SQL
 │   └── img/                     # Captures utilisées dans le rapport
 ├── evaluation/
 │   ├── evaluation_questions.csv # Jeu figé E01-E15 (comparaison officielle)
@@ -135,6 +132,8 @@ Tests actuellement présents :
 - `test_observability.py` — configuration Logfire optionnelle ;
 - `test_evaluation_dataset.py` — structure du dataset d'évaluation ;
 - `test_rag_agent.py` — agent Pydantic AI : import, construction du contexte, sortie typée.
+- `test_sql_tool.py` — sécurité du SQL Tool en lecture seule ;
+- `test_router.py` — routage RAG / SQL / hybride / hors-sujet, sans appel API.
 
 ## Commandes utiles
 
@@ -148,8 +147,11 @@ poetry run python indexer.py
 # Lancer l'application
 poetry run streamlit run MistralChat.py
 
-# Lancer la baseline RAGAS
-poetry run python scripts/evaluate_ragas.py
+# Construire la base SQLite NBA
+poetry run python scripts/load_excel_to_db.py
+
+# Lancer l'évaluation RAGAS avec le pipeline routé
+poetry run python scripts/evaluate_ragas.py --eval-mode routed
 ```
 
 ## Utilisation
@@ -180,14 +182,14 @@ http://localhost:8501
 
 ## Routage RAG / SQL
 
-Depuis **RAG v3 — hybride SQL**, l'assistant choisit automatiquement le chemin selon la question :
+Dans **RAG v3 — hybride SQL**, le routeur choisit le traitement selon la question :
 
 - **RAG texte** (FAISS) pour les questions documentaires, opinions et discussions Reddit ;
 - **SQL chiffres** (SQL Tool en lecture seule) pour les questions chiffrées : classements, maximum, total, fiche d'un joueur ;
 - **Hybride** pour les questions mixtes : le chiffre est récupéré par SQL (fait vérifié), puis la réponse est rédigée par le LLM ;
 - **Hors périmètre** : refus poli pour les questions hors NBA.
 
-L'orchestration est dans `utils/router.py`, le mapping question → SQL dans `utils/sql/nba_intents.py`. Le SQL n'est **jamais** écrit par le LLM : ce sont des requêtes prédéfinies, exécutées par le SQL Tool sécurisé. Pour le 3P%, un filtre de volume (≥ 100 tentatives) évite l'artefact d'un joueur à 100 % sur 1 tir. L'interface Streamlit affiche discrètement la route utilisée.
+L'orchestration est dans `utils/router.py`, le mapping question → SQL dans `utils/sql/nba_intents.py`. Le SQL n'est **jamais** écrit par le LLM : les requêtes sont contrôlées, construites depuis des intentions et des colonnes sur liste blanche, puis exécutées par le SQL Tool sécurisé. Pour le 3P%, un filtre de volume (≥ 100 tentatives) évite l'artefact d'un joueur à 100 % sur 1 tir. L'interface Streamlit affiche discrètement la route utilisée.
 
 Préalable aux routes SQL / hybride — construire la base SQLite :
 
@@ -195,7 +197,7 @@ Préalable aux routes SQL / hybride — construire la base SQLite :
 poetry run python scripts/load_excel_to_db.py
 ```
 
-Le mode hybride a deux variantes, réglées par la variable `HYBRID_MODE` (`sql_only` par défaut, ou `sql_with_rag_context`). Détail des routes, cas couverts et limites : [docs/routing.md](docs/routing.md).
+Le mode hybride a deux variantes, réglées par la variable `HYBRID_MODE` (`sql_only` par défaut, ou `sql_with_rag_context`). Le détail des routes, cas couverts et limites est présenté dans le [rapport](docs/final_report.md#7-rag-v3--hybride-sql).
 
 ## Évaluation et résultats
 
@@ -212,7 +214,7 @@ Le prototype fonctionne, mais les questions chiffrées restent fragiles. FAISS r
 
 Exemple observé : le modèle peut répondre **Shai Gilgeous-Alexander — 37,5 %** à la question du meilleur pourcentage à 3 points, alors qu'un extrait contient déjà **Nikola Jokić — 41,7 %**.
 
-Les limites principales sont résumées ici : OCR parfois bruité, Excel indexé comme texte, réponses parfois trop peu ancrées. Le détail est présenté dans le [rapport](docs/final_report.md#audit-initial-et-limites-observées).
+Les limites principales sont les suivantes : OCR parfois bruité, Excel indexé comme texte dans les premières versions, réponses parfois trop peu ancrées.
 
 ### Dataset d'évaluation
 
@@ -220,7 +222,7 @@ Le fichier `evaluation/evaluation_questions.csv` contient le jeu **figé E01–E
 
 *Le jeu figé E01–E15 ne doit plus être modifié une fois la baseline calculée.*
 
-La méthodologie d'évaluation est détaillée dans le [rapport](docs/final_report.md#3-méthodologie-dévaluation).
+La méthodologie d'évaluation repose sur RAGAS, avec un juge LLM et quatre métriques : `faithfulness`, `answer_relevancy`, `context_precision` et `context_recall`.
 
 ### Validation et génération structurée
 
@@ -232,11 +234,9 @@ La génération finale est centralisée dans `utils/rag_agent.py`. L'agent Pydan
 
 Le même agent est utilisé par `MistralChat.py` et `scripts/evaluate_ragas.py`. L'évaluation mesure donc le même chemin de génération que l'application.
 
-Le fonctionnement et l'impact de cette modification sont expliqués dans le [rapport](docs/final_report.md#5-passage-à-rag-v2--contrôlé).
-
 ### Baseline RAGAS et versions repères
 
-Le script `scripts/evaluate_ragas.py` évalue l'assistant RAG sur le jeu de questions figé. Les résultats servent à comparer **RAG v1 — baseline**, **RAG v2 — contrôlé**, puis **RAG v3 — hybride SQL**.
+Le script `scripts/evaluate_ragas.py` évalue l'assistant sur le jeu de questions figé. Les résultats servent à comparer **RAG v1 — baseline**, **RAG v2 — contrôlé**, puis **RAG v3 — hybride SQL**.
 
 ```bash
 poetry run python scripts/evaluate_ragas.py
@@ -252,7 +252,7 @@ HYBRID_MODE=sql_only poetry run python scripts/evaluate_ragas.py --eval-mode rou
 HYBRID_MODE=sql_with_rag_context poetry run python scripts/evaluate_ragas.py --eval-mode routed
 ```
 
-Chaque condition écrit ses propres fichiers `ragas_<condition>_results.csv` / `_summary.json` (colonnes `route` et `mode` incluses). Le détail et la synthèse des résultats figurent dans le [rapport](docs/final_report.md).
+Chaque condition écrit ses propres fichiers `ragas_<condition>_results.csv` / `_summary.json` (colonnes `route` et `mode` incluses).
 
 Les métriques utilisées sont :
 
@@ -285,7 +285,7 @@ Pour tenir compte de la variabilité du juge LLM, une expérience A/B a été me
 
 L'expérience montre une hausse de la `faithfulness` moyenne avec Pydantic AI, avec une baisse de l'`answer_relevancy`. Les métriques de contexte restent proches, ce qui indique que l'écart vient surtout de la génération.
 
-Le détail complet est documenté dans le [rapport](docs/final_report.md#robustesse-des-résultats).
+Cette comparaison sert à vérifier que l'évolution du pipeline ne repose pas sur un seul run isolé.
 
 
 ## Observabilité
@@ -303,14 +303,11 @@ LOGFIRE_ENVIRONMENT=local
 
 Les variables sont définies dans `.env.example` sans vraie valeur. Aucun secret ne doit être commité.
 
-Le rôle de Logfire dans le pipeline est détaillé dans le [rapport](docs/final_report.md#logfire).
-
 ## SQL Tool LangChain (lecture seule)
 
-Pour préparer **RAG v3 — hybride SQL**, le projet fournit un SQL Tool LangChain en lecture seule : `nba_sql_query` (`utils/sql/sql_tool.py`). Il sert aux questions chiffrées : classement, maximum, statistiques d'un joueur.
+Pour **RAG v3 — hybride SQL**, le projet fournit un SQL Tool LangChain en lecture seule : `nba_sql_query` (`utils/sql/sql_tool.py`). Il sert aux questions chiffrées : classement, maximum, minimum, statistiques d'un joueur.
 
 - Il interroge la base SQLite locale `data/nba.sqlite`, générée par `poetry run python scripts/load_excel_to_db.py`.
 - Il n'accepte que des requêtes `SELECT` : mots-clés d'écriture refusés, une seule requête à la fois, nombre de lignes plafonné, connexion ouverte en lecture seule.
-- Il complète le RAG texte sans le remplacer : FAISS reste utilisé pour les documents (Reddit/PDF). Le routage automatique entre RAG, SQL et hybride est désormais branché (voir [Routage RAG / SQL](#routage-rag--sql) et [docs/routing.md](docs/routing.md)).
-
-Le détail (règles de sécurité, exemples de requêtes, limites) est dans le [rapport](docs/final_report.md) et dans `docs/sqlite_schema.md`.
+- Il complète le RAG texte sans le remplacer : FAISS reste utilisé pour les documents (Reddit/PDF), tandis que SQLite répond aux questions chiffrées.
+  

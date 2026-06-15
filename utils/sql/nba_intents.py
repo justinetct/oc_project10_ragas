@@ -1,14 +1,25 @@
 """utils/sql/nba_intents.py — Question chiffrée -> requête SQL prédéfinie.
 
-Traduit une question chiffrée en UNE requête SQL prédéfinie, puis met en forme le
-résultat en français. Aucun SQL libre généré par le LLM :
-- les classements ("leaders") utilisent un gabarit unique dont la colonne provient
-  d'une LISTE BLANCHE (`STAT_LEADERS`), jamais du texte utilisateur ;
-- les autres cas sont des requêtes nommées dédiées (3P% avec filtre de volume, total
-  par équipe, joueurs par équipe, joueur le plus âgé, fiche d'un joueur).
+Traduit une question chiffrée en une requête SQL **prédéfinie**, l'exécute via le SQL
+Tool sécurisé, puis met en forme le résultat en français. Le raisonnement suit un
+pipeline explicite (voir `answer_numeric_question`) :
 
-L'exécution passe TOUJOURS par le SQL Tool sécurisé (`sql_query_tool`) : SELECT/WITH
-uniquement, une requête à la fois, plafond de lignes, connexion en lecture seule.
+1. `detect_special_case`       : cas qui ne sont pas de simples classements (meilleur
+   3P% à volume minimum, total par équipe, joueurs par équipe, âge, fiche d'un joueur) ;
+2. `detect_metric`             : sinon, la statistique de classement visée (liste blanche) ;
+3. `detect_ranking_direction`  : sens du tri ('DESC' = maximum, 'ASC' = minimum) ;
+4. `build_safe_query`          : construit une requête autorisée (liste blanche /
+   `EXAMPLE_QUERIES` / requête paramétrée) ;
+5. `format_answer`             : rend une réponse française lisible.
+
+Aucun SQL n'est généré par le LLM. Les colonnes de classement proviennent TOUJOURS d'une
+liste blanche (`STAT_METRICS`) et la direction est TOUJOURS une constante interne : ni
+l'une ni l'autre ne vient du texte utilisateur. L'exécution passe TOUJOURS par le SQL
+Tool sécurisé (`sql_query_tool`) : SELECT/WITH uniquement, une requête à la fois, plafond
+de lignes, connexion en lecture seule.
+
+L'« intention » qui circule entre les étapes est un simple dictionnaire, p. ex.
+`{"kind": "ranking", "metric": "points", "direction": "DESC"}`.
 """
 
 from ..text import mentions, normalize
@@ -33,18 +44,25 @@ RANKING_WORDS_MAX = (
 RANKING_WORDS_MIN = (
     "moins", "le moins", "moins de", "minimum", "min", "pire", "plus faible", "plus bas",
 )
-# Tout mot de classement ; le sens du tri est décidé par `_ranking_direction`.
+# Tout mot de classement ; le sens du tri est décidé par `detect_ranking_direction`.
 RANKING_WORDS = RANKING_WORDS_MAX + RANKING_WORDS_MIN
 
-# Classements simples : mots-clés FR -> (colonne stats sur LISTE BLANCHE, nom FR de la stat).
+# Statistiques de classement : colonne (LISTE BLANCHE) -> (mots-clés FR, nom FR).
+# La clé EST le nom de colonne SQL : il ne provient jamais du texte utilisateur.
 # L'ordre compte : les stats spécifiques avant "points" (plus générique).
-STAT_LEADERS = (
-    (("contre", "contreur", "block", "bloc"), "blocks", "contres"),
-    (("interception", "steal"), "steals", "interceptions"),
-    (("triple double",), "triple_doubles", "triple-doubles"),
-    (("rebond", "rebound"), "rebounds", "rebonds"),
-    (("passe", "assist"), "assists", "passes décisives"),
-    (("point", "marqueur", "scoreur"), "points", "points"),
+STAT_METRICS = {
+    "blocks": (("contre", "contreur", "block", "bloc"), "contres"),
+    "steals": (("interception", "steal"), "interceptions"),
+    "triple_doubles": (("triple double",), "triple-doubles"),
+    "rebounds": (("rebond", "rebound"), "rebonds"),
+    "assists": (("passe", "assist"), "passes décisives"),
+    "points": (("point", "marqueur", "scoreur"), "points"),
+}
+
+# Mots-clés signalant une demande de fiche joueur (consultation, pas classement).
+PLAYER_STATS_KEYWORDS = (
+    "statistique", "stat", "fiche", "profil", "chiffres", "combien",
+    "point", "rebond", "passe", "moyenne",
 )
 
 # Fiche d'un joueur nommé (requête paramétrée : le nom passe par '?', jamais concaténé).
@@ -67,17 +85,142 @@ COLUMN_LABELS = {
 }
 
 
-def _ranking_direction(q):
-    """Sens du tri : 'ASC' si la question vise un minimum, 'DESC' sinon.
+# --- 1-3. Détection (mots-clés uniquement, aucun appel externe) ---------------
 
-    On teste le minimum d'abord car "plus faible"/"plus bas" contiennent "plus".
-    La direction est une constante interne ('ASC'/'DESC'), jamais issue du texte brut.
+def detect_ranking_direction(question):
+    """'ASC' si la question vise un minimum, 'DESC' sinon.
+
+    On teste les mots du minimum d'abord car « plus faible »/« plus bas »
+    contiennent « plus ». Le résultat est une constante interne ('ASC'/'DESC').
     """
+    q = normalize(question)
     return "ASC" if mentions(q, RANKING_WORDS_MIN) else "DESC"
 
 
+def detect_metric(question):
+    """Statistique de classement simple visée (clé de `STAT_METRICS`), ou None.
+
+    Les questions à 3 points relèvent d'un cas spécial (meilleur 3P%, voir
+    `detect_special_case`), pas d'un classement de « points » : on les écarte ici.
+    """
+    q = normalize(question)
+    if _is_three_point(q):
+        return None
+    # On parcourt la liste blanche et on renvoie la 1re stat dont un mot-clé apparaît.
+    for column in STAT_METRICS:
+        keywords = STAT_METRICS[column][0]  # [0] = mots-clés (le [1] = nom français)
+        if mentions(q, keywords):
+            return column
+    return None
+
+
+def detect_special_case(question):
+    """Intention d'un cas qui n'est pas un simple classement, ou None.
+
+    Couvre : meilleur 3P% (avec filtre de volume), total de points par équipe,
+    nombre de joueurs par équipe, joueur le plus âgé/jeune, fiche d'un joueur nommé.
+    Chaque intention est un petit dictionnaire décrivant ce qu'il faut chercher.
+    """
+    q = normalize(question)
+    direction = detect_ranking_direction(question)
+
+    # Meilleur 3P% avec filtre de volume (>=100 tentatives) : règle métier documentée.
+    # On ne fournit pas de « pire 3P% » : sur une demande de minimum, on décline (None)
+    # plutôt que de renvoyer le meilleur tireur (réponse trompeuse).
+    if _is_three_point(q) and (mentions(q, ("pourcentage", "tireur", "adresse")) or mentions(q, RANKING_WORDS)):
+        if direction == "ASC":
+            return None
+        return {"kind": "best_three_point_pct"}
+
+    # Total de points par équipe (le plus / le moins).
+    if mentions(q, ("equipe",)) and mentions(q, ("point", "marque", "score")) and (mentions(q, ("total",)) or mentions(q, RANKING_WORDS)):
+        return {"kind": "team_total_points", "direction": direction}
+
+    # Nombre de joueurs par équipe.
+    if mentions(q, ("combien", "nombre")) and mentions(q, ("joueur",)) and mentions(q, ("equipe",)):
+        return {"kind": "players_per_team"}
+
+    # Joueur le plus âgé / le plus jeune (« jeune » impose le tri ascendant).
+    if mentions(q, ("age", "vieux", "jeune")) and mentions(q, RANKING_WORDS):
+        youngest = mentions(q, ("jeune",)) or direction == "ASC"
+        return {"kind": "player_age", "direction": "ASC" if youngest else "DESC"}
+
+    # Fiche d'un joueur nommé : seulement si un joueur connu est cité.
+    if mentions(q, PLAYER_STATS_KEYWORDS):
+        player = find_player_name(question)
+        if player:
+            return {"kind": "player_stats", "player": player}
+
+    return None
+
+
+def build_ranking_intent(metric, direction, question):
+    """Intention d'un classement simple, ou None.
+
+    Exige une statistique reconnue ET un mot de classement explicite : « compare les
+    rebonds des équipes » (sans « plus »/« moins »…) n'est pas une demande de classement.
+    """
+    if metric is None or not mentions(normalize(question), RANKING_WORDS):
+        return None
+    return {"kind": "ranking", "metric": metric, "direction": direction}
+
+
+# --- 4. Construction de la requête autorisée ----------------------------------
+
+def build_safe_query(intent):
+    """Transforme l'intention en une requête autorisée.
+
+    Renvoie un tuple (query, params, label, limit), ou None si l'intention est inconnue :
+    - query  : le texte SQL à exécuter ;
+    - params : les valeurs des « ? » de la requête (vide s'il n'y en a pas) ;
+    - label  : l'intitulé français affiché en tête de réponse ;
+    - limit  : le nombre maximum de lignes renvoyées.
+
+    La requête vient toujours d'une source contrôlée (liste blanche / `EXAMPLE_QUERIES` /
+    requête paramétrée) : aucune colonne ni direction n'est recopiée du texte utilisateur.
+    """
+    kind = intent["kind"]
+
+    if kind == "ranking":
+        column = intent["metric"]        # une clé de STAT_METRICS = nom de colonne sûr
+        noun = STAT_METRICS[column][1]   # [1] = nom français (le [0] = mots-clés)
+        query = _leader_query(column, intent["direction"])
+        label = _leader_label(noun, intent["direction"])
+        return query, (), label, 10
+
+    if kind == "best_three_point_pct":
+        label = "Meilleurs tireurs à 3 points (minimum 100 tentatives)"
+        return EXAMPLE_QUERIES["best_three_point_shooters"], (), label, 10
+
+    if kind == "team_total_points":
+        extreme = "le moins" if intent["direction"] == "ASC" else "le plus"
+        label = f"Équipes ayant marqué {extreme} de points (total)"
+        return _team_total_points_query(intent["direction"]), (), label, 10
+
+    if kind == "players_per_team":
+        return EXAMPLE_QUERIES["players_per_team"], (), "Nombre de joueurs par équipe", 30
+
+    if kind == "player_age":
+        label = "Joueurs les plus jeunes" if intent["direction"] == "ASC" else "Joueurs les plus âgés"
+        return _player_age_query(intent["direction"]), (), label, 10
+
+    if kind == "player_stats":
+        player = intent["player"]
+        # Le nom passe par un « ? » (paramètre), jamais collé dans le texte SQL.
+        return PLAYER_STATS_QUERY, (player,), f"Statistiques de {player}", 1
+
+    return None
+
+
+# --- Gabarits SQL (colonne et direction contrôlées par l'appelant) ------------
+
 def _leader_query(column, direction="DESC"):
-    """Gabarit de classement. `column` (liste blanche) et `direction` ('ASC'/'DESC')."""
+    """Gabarit de classement. `column` et `direction` viennent d'une liste blanche.
+
+    On insère `column`/`direction` par .format (et non par « ? ») car SQLite ne permet pas
+    de paramétrer un nom de colonne ; c'est sûr UNIQUEMENT parce que ces valeurs sont
+    contrôlées en interne, jamais issues du texte utilisateur.
+    """
     return (
         "SELECT p.player_name, t.team_name, s.{col} "
         "FROM stats s "
@@ -142,69 +285,41 @@ def find_player_name(question):
     return None
 
 
-def match_sql_query(question):
-    """Question chiffrée -> (query, params, label, limit) prédéfini, ou None."""
-    q = normalize(question)
-    direction = _ranking_direction(q)  # 'ASC' si la question vise un minimum
-
-    # Meilleur 3P% : filtre de volume (>=100 tentatives) = règle métier documentée.
-    # On ne fournit pas de « pire 3P% » : sur une demande de minimum, on décline plutôt
-    # que de renvoyer le meilleur tireur (réponse trompeuse).
-    if _is_three_point(q) and (mentions(q, ("pourcentage", "tireur", "adresse")) or mentions(q, RANKING_WORDS)):
-        if direction == "ASC":
-            return None
-        return EXAMPLE_QUERIES["best_three_point_shooters"], (), "Meilleurs tireurs à 3 points (minimum 100 tentatives)", 10
-
-    # Total de points par équipe (le plus / le moins).
-    if mentions(q, ("equipe",)) and mentions(q, ("point", "marque", "score")) and (mentions(q, ("total",)) or mentions(q, RANKING_WORDS)):
-        extreme = "le moins" if direction == "ASC" else "le plus"
-        return _team_total_points_query(direction), (), f"Équipes ayant marqué {extreme} de points (total)", 10
-
-    # Nombre de joueurs par équipe.
-    if mentions(q, ("combien", "nombre")) and mentions(q, ("joueur",)) and mentions(q, ("equipe",)):
-        return EXAMPLE_QUERIES["players_per_team"], (), "Nombre de joueurs par équipe", 30
-
-    # Joueur le plus âgé / le plus jeune.
-    if mentions(q, ("age", "vieux", "jeune")) and mentions(q, RANKING_WORDS):
-        youngest = mentions(q, ("jeune",)) or direction == "ASC"
-        label = "Joueurs les plus jeunes" if youngest else "Joueurs les plus âgés"
-        return _player_age_query("ASC" if youngest else "DESC"), (), label, 10
-
-    # Classements simples (leader d'une stat, le plus / le moins) — colonne sur liste blanche.
-    for keywords, column, noun in STAT_LEADERS:
-        if mentions(q, keywords) and mentions(q, RANKING_WORDS):
-            return _leader_query(column, direction), (), _leader_label(noun, direction), 10
-
-    # Fiche d'un joueur nommé (pas un classement).
-    if mentions(q, ("statistique", "stat", "fiche", "profil", "chiffres", "combien", "point", "rebond", "passe", "moyenne")):
-        player = find_player_name(question)
-        if player:
-            return PLAYER_STATS_QUERY, (player,), f"Statistiques de {player}", 1
-
-    return None
-
+# --- 5. Mise en forme de la réponse -------------------------------------------
 
 def _format_row(row):
     """Une ligne SQL -> texte FR lisible (libellés de colonnes traduits)."""
     return ", ".join(f"{COLUMN_LABELS.get(col, col)} : {value}" for col, value in row.items())
 
 
-def format_sql_answer(label, rows, top=5):
+def format_answer(label, rows, top=5):
     """Réponse FR : intitulé + premières lignes numérotées."""
     lines = [f"{i}. {_format_row(row)}" for i, row in enumerate(rows[:top], start=1)]
     return f"{label} :\n" + "\n".join(lines)
 
 
+# --- Orchestration ------------------------------------------------------------
+
 def answer_numeric_question(question):
     """(réponse FR, lignes de contexte) pour une question chiffrée couverte, sinon None.
 
-    Exécution via le SQL Tool sécurisé. Toute erreur devient un message clair, jamais
-    un chiffre inventé.
+    Pipeline : on détecte l'intention (cas spécial, sinon classement simple), on
+    construit une requête autorisée, on l'exécute via le SQL Tool sécurisé, puis on met
+    en forme. Toute erreur devient un message clair, jamais un chiffre inventé.
     """
-    match = match_sql_query(question)
-    if match is None:
+    intent = detect_special_case(question)
+    if intent is None:
+        metric = detect_metric(question)
+        direction = detect_ranking_direction(question)
+        intent = build_ranking_intent(metric, direction, question)
+    if intent is None:
         return None
-    query, params, label, limit = match
+
+    query_info = build_safe_query(intent)
+    if query_info is None:
+        return None
+    query, params, label, limit = query_info  # on dépaquette le tuple
+
     try:
         rows = sql_query_tool.invoke({"query": query, "params": list(params), "limit": limit})
     except FileNotFoundError:
@@ -215,6 +330,7 @@ def answer_numeric_question(question):
         )
     except Exception as exc:  # requête refusée / erreur SQL -> message clair
         return (f"Je n'ai pas pu exécuter cette requête chiffrée ({exc}).", [])
+
     if not rows:
         return ("Aucune donnée ne correspond à cette question chiffrée.", [])
-    return format_sql_answer(label, rows), [_format_row(row) for row in rows]
+    return format_answer(label, rows), [_format_row(row) for row in rows]
