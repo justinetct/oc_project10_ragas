@@ -19,7 +19,16 @@ os.environ.setdefault("MISTRAL_API_KEY", "test-key-not-used")
 import pytest
 
 import utils.sql.sql_tool as sql_tool
-from utils.router import OUT_OF_SCOPE_MESSAGE, answer_question, classify_question
+from utils.router import (
+    MISSING_INFO_NOTICE,
+    OUT_OF_SCOPE_MESSAGE,
+    OUT_OF_SCOPE_NOTICE,
+    SQL_NOTICE,
+    SQL_VOLUME_FILTER_LABEL,
+    answer_question,
+    classify_question,
+    summarize_rag_sources,
+)
 from utils.sql.nba_intents import NOT_SUPPORTED_MESSAGE
 
 
@@ -202,3 +211,52 @@ def test_sql_route_never_calls_faiss_or_llm(sql_db):
     result = answer_question("Quel joueur a marqué le plus de points ?", manager=_FailingManager())
     assert result.route == "sql"
     assert "Shai Gilgeous-Alexander" in result.answer
+
+
+# --- Métadonnées d'affichage : sources + notice (sans API) --------------------
+
+def test_sql_answer_exposes_sources_and_notice(sql_db):
+    """Une réponse SQL expose une provenance résumée et non sensible + une notice."""
+    result = answer_question("Quel joueur a marqué le plus de points ?", manager=None)
+    assert result.sources  # au moins une ligne de provenance
+    assert result.notice == SQL_NOTICE
+    # Jamais de SQL brut ni d'information technique dans l'affichage.
+    joined = " ".join(result.sources)
+    assert "SELECT" not in joined.upper()
+    assert "data/nba.sqlite" not in joined
+
+
+def test_best_three_point_shows_volume_filter(sql_db):
+    """Le classement 3P% signale le filtre de volume dans les sources affichées."""
+    result = answer_question("Qui a le meilleur pourcentage à 3 points ?", manager=None)
+    assert SQL_VOLUME_FILTER_LABEL in result.sources
+
+
+def test_out_of_scope_exposes_notice():
+    """Une question hors périmètre porte une notice claire, sans sources."""
+    result = answer_question("Quelle est la météo à Paris ?", manager=None)
+    assert result.route == "out_of_scope"
+    assert result.notice == OUT_OF_SCOPE_NOTICE
+    assert result.sources == []
+
+
+def test_uncovered_numeric_exposes_missing_notice(sql_db):
+    """Une question chiffrée non couverte signale l'absence d'information."""
+    result = answer_question("Quelle est la moyenne d'âge des joueurs en NBA ?", manager=None)
+    assert result.answer == NOT_SUPPORTED_MESSAGE
+    assert result.notice == MISSING_INFO_NOTICE
+
+
+def test_summarize_rag_sources_shows_filename_not_path():
+    """Les sources RAG montrent le nom de fichier (jamais un chemin) et sont plafonnées."""
+    results = [
+        {"text": "Les fans débattent du play-in. " * 10,
+         "metadata": {"filename": "Reddit 1.pdf", "source": "inputs/Reddit 1.pdf"}},
+        {"text": "Deuxième extrait.", "metadata": {"filename": "Reddit 2.pdf"}},
+        {"text": "Troisième extrait.", "metadata": {"filename": "Reddit 3.pdf"}},
+        {"text": "Quatrième extrait.", "metadata": {"filename": "Reddit 4.pdf"}},
+    ]
+    summaries = summarize_rag_sources(results)
+    assert len(summaries) == 3  # plafonné à 3 par défaut
+    assert summaries[0].startswith("Reddit 1.pdf")
+    assert "/" not in " ".join(summaries)  # nom de fichier, jamais de chemin

@@ -84,14 +84,57 @@ ROUTE_LABELS = {
     "out_of_scope": "Hors périmètre",
 }
 
+# Libellés d'affichage des sources (résumés, non sensibles : jamais de SQL brut ni de chemin).
+SQL_SOURCE_LABEL = "Base SQLite NBA — table des statistiques"
+SQL_TOOL_LABEL = "Calcul via le SQL Tool (lecture seule)"
+SQL_VOLUME_FILTER_LABEL = "Filtre 3P% : minimum 100 tentatives"
+HYBRID_SQL_SOURCE_LABEL = "Chiffre vérifié : base SQLite NBA"
+
+# Notices courtes (la « limite / avertissement » affichée sous la réponse).
+RAG_NOTICE = "Réponse générée à partir des documents retrouvés."
+SQL_NOTICE = "Chiffre calculé sur les données de la saison (SQL Tool en lecture seule)."
+HYBRID_NOTICE = "Chiffre vérifié par SQL, interprétation rédigée à partir des documents."
+OUT_OF_SCOPE_NOTICE = "La question ne correspond pas aux sources NBA disponibles."
+MISSING_INFO_NOTICE = "Information non disponible : aucun chiffre n'a été inventé."
+
 
 class RoutedAnswer(BaseModel):
-    """Réponse typée de l'orchestrateur : route choisie, texte, contextes, mode hybride."""
+    """Réponse typée de l'orchestrateur : route choisie, texte, contextes, mode hybride.
+
+    `sources` (provenance résumée pour l'UI) et `notice` (limite/avertissement court)
+    servent uniquement à l'affichage ; ils sont optionnels, donc l'évaluation qui ne lit
+    que `answer`/`route`/`mode`/`retrieved_contexts` n'est pas affectée.
+    """
 
     route: Literal["rag", "sql", "hybrid", "out_of_scope"]
     answer: str
     retrieved_contexts: list[str] = Field(default_factory=list)
     mode: str | None = None
+    sources: list[str] = Field(default_factory=list)
+    notice: str | None = None
+
+
+def summarize_rag_sources(results, limit=3):
+    """Résumé court des documents FAISS utilisés (nom de fichier + extrait), pour l'UI.
+
+    On montre le nom de fichier (jamais un chemin) et un extrait tronqué : l'utilisateur
+    voit d'où vient la réponse, sans information technique ni contenu sensible.
+    """
+    summaries = []
+    for result in results[:limit]:
+        name = result.get("metadata", {}).get("filename") or "Document"
+        excerpt = " ".join(result.get("text", "").split())[:90]
+        summaries.append(f"{name} — « {excerpt}… »" if excerpt else name)
+    return summaries
+
+
+def summarize_sql_sources(answer):
+    """Provenance résumée et non sensible d'une réponse chiffrée (jamais le SQL brut)."""
+    sources = [SQL_SOURCE_LABEL, SQL_TOOL_LABEL]
+    # Le libellé du classement 3P% contient « 100 tentatives » : on signale alors le filtre.
+    if "100 tentatives" in answer:
+        sources.append(SQL_VOLUME_FILTER_LABEL)
+    return sources
 
 
 def classify_question(question):
@@ -128,7 +171,7 @@ def answer_question(question, manager=None, force_route=None):
     """
     route = force_route or classify_question(question)
     if route == "out_of_scope":
-        return RoutedAnswer(route="out_of_scope", answer=OUT_OF_SCOPE_MESSAGE)
+        return RoutedAnswer(route="out_of_scope", answer=OUT_OF_SCOPE_MESSAGE, notice=OUT_OF_SCOPE_NOTICE)
     if route == "sql":
         return _answer_sql(question)
     if route == "hybrid":
@@ -144,16 +187,30 @@ def _answer_rag(question, manager):
         RagAnswer(question=question, answer=answer, retrieved_contexts=results)
     except ValidationError as exc:
         logging.warning("Réponse RAG non conforme au schéma RagAnswer : %s", exc)
-    return RoutedAnswer(route="rag", answer=answer, retrieved_contexts=[r["text"] for r in results])
+    return RoutedAnswer(
+        route="rag",
+        answer=answer,
+        retrieved_contexts=[r["text"] for r in results],
+        sources=summarize_rag_sources(results),
+        notice=RAG_NOTICE if results else MISSING_INFO_NOTICE,
+    )
 
 
 def _answer_sql(question):
     """Route SQL : réponse chiffrée via le mapping prédéfini (aucun LLM)."""
     numeric = answer_numeric_question(question)
     if numeric is None:
-        return RoutedAnswer(route="sql", answer=NOT_SUPPORTED_MESSAGE)
+        return RoutedAnswer(route="sql", answer=NOT_SUPPORTED_MESSAGE, notice=MISSING_INFO_NOTICE)
     answer, context_lines = numeric
-    return RoutedAnswer(route="sql", answer=answer, retrieved_contexts=context_lines)
+    if not context_lines:  # base absente / aucune donnée : message clair, pas de source
+        return RoutedAnswer(route="sql", answer=answer, notice=MISSING_INFO_NOTICE)
+    return RoutedAnswer(
+        route="sql",
+        answer=answer,
+        retrieved_contexts=context_lines,
+        sources=summarize_sql_sources(answer),
+        notice=SQL_NOTICE,
+    )
 
 
 def _sql_context(text):
@@ -165,23 +222,28 @@ def _answer_hybrid(question, manager):
     """Route hybride : chiffre SQL (prioritaire) + rédaction LLM, selon `HYBRID_MODE`."""
     numeric = answer_numeric_question(question)
     if numeric is None:
-        return RoutedAnswer(route="hybrid", answer=NOT_SUPPORTED_MESSAGE, mode=HYBRID_MODE)
+        return RoutedAnswer(route="hybrid", answer=NOT_SUPPORTED_MESSAGE, mode=HYBRID_MODE, notice=MISSING_INFO_NOTICE)
     _sql_answer, sql_lines = numeric
     if not sql_lines:  # pas de chiffre exploitable (base absente, aucune donnée)
-        return RoutedAnswer(route="hybrid", answer=_sql_answer, mode=HYBRID_MODE)
+        return RoutedAnswer(route="hybrid", answer=_sql_answer, mode=HYBRID_MODE, notice=MISSING_INFO_NOTICE)
 
     sql_fact = "Statistique vérifiée (base SQL NBA) :\n" + "\n".join(sql_lines)
     contexts = [_sql_context(sql_fact)]
+    rag_results = []
     if HYBRID_MODE == "sql_with_rag_context" and manager is not None:
         try:
-            contexts += manager.search(question, k=HYBRID_RAG_K)
+            rag_results = manager.search(question, k=HYBRID_RAG_K)
+            contexts += rag_results
         except Exception:
             logging.warning("Recherche FAISS indisponible pour le mode hybride enrichi.")
 
     answer = generate_rag_answer(question, contexts, extra_instruction=HYBRID_INSTRUCTION)
+    sources = [HYBRID_SQL_SOURCE_LABEL] + [f"Texte : {s}" for s in summarize_rag_sources(rag_results)]
     return RoutedAnswer(
         route="hybrid",
         answer=answer,
         retrieved_contexts=[c["text"] for c in contexts],
         mode=HYBRID_MODE,
+        sources=sources,
+        notice=HYBRID_NOTICE,
     )

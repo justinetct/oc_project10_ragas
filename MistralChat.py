@@ -63,6 +63,29 @@ if "messages" not in st.session_state:
     # Message d'accueil initial
     st.session_state.messages = [{"role": "assistant", "content": f"Bonjour ! Je suis votre analyste IA pour la {NAME}. Posez-moi vos questions sur les équipes, les joueurs ou les statistiques, et je vous répondrai en me basant sur les données les plus récentes."}]
 
+def render_route_details(message):
+    """Affiche, sous une réponse de l'assistant, le type de traitement et un encart
+    « Sources et limites ».
+
+    Robuste : n'affiche rien si les métadonnées sont absentes (ex. message d'accueil).
+    """
+    route_label = message.get("route_label")
+    if not route_label:
+        return
+    st.caption(f"Traitement : {route_label}")
+    sources = message.get("sources") or []
+    notice = message.get("notice")
+    if not sources and not notice:
+        return
+    with st.expander("Sources et limites"):
+        if sources:
+            st.markdown("**Sources**")
+            for line in sources:
+                st.markdown(f"- {line}")
+        if notice:
+            st.caption(notice)
+
+
 # --- Interface Utilisateur Streamlit ---
 st.title(APP_TITLE)
 st.caption(f"Assistant virtuel pour {NAME} | Modèle: {model}")
@@ -71,6 +94,8 @@ st.caption(f"Assistant virtuel pour {NAME} | Modèle: {model}")
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.write(message["content"])
+        if message["role"] == "assistant":
+            render_route_details(message)
 
 # Zone de saisie utilisateur
 if prompt := st.chat_input(f"Posez votre question sur la {NAME}..."):
@@ -99,20 +124,28 @@ if prompt := st.chat_input(f"Posez votre question sur la {NAME}..."):
                 routed = answer_question(prompt, vector_store_manager)
                 response_content = routed.answer
                 route_label = ROUTE_LABELS.get(routed.route, routed.route)
+                sources = routed.sources
+                notice = routed.notice
             except Exception:
                 logging.exception("Erreur lors du routage / de la génération")
                 response_content = "Je suis désolé, une erreur technique m'empêche de répondre. Veuillez réessayer plus tard."
-                route_label = None
+                route_label, sources, notice = None, [], None
 
             logfire.info("reponse_routee", route=route_label)
 
-            # Affichage de la réponse, puis indication discrète de la route utilisée.
+            # Message assistant = réponse + métadonnées d'affichage (route, sources, limite).
+            assistant_message = {
+                "role": "assistant",
+                "content": response_content,
+                "route_label": route_label,
+                "sources": sources,
+                "notice": notice,
+            }
             message_placeholder.write(response_content)
-            if route_label:
-                st.caption(f"Route : {route_label}")
+            render_route_details(assistant_message)
 
-        # Ajout de la réponse de l'assistant à l'historique (pour affichage UI)
-        st.session_state.messages.append({"role": "assistant", "content": response_content})
+        # Ajout à l'historique : les métadonnées seront ré-affichées au prochain run.
+        st.session_state.messages.append(assistant_message)
 
 # Petit pied de page optionnel
 st.markdown("---")
