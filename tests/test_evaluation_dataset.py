@@ -1,8 +1,9 @@
 """Tests de structure du jeu d'évaluation métier.
 
-On vérifie seulement que `evaluation/evaluation_questions.csv` est bien formé et
-cohérent. Aucun appel à l'API Mistral, aucun import de `mistralai`, aucune
-dépendance à FAISS ni au dossier `vector_db/` : on ne lit qu'un fichier CSV.
+On vérifie seulement que `evaluation/evaluation_questions.csv` (jeu figé E01-E15,
+le même pour tout le projet) est bien formé et cohérent. Aucun appel à l'API
+Mistral, aucun import de `mistralai`, aucune dépendance à FAISS ni au dossier
+`vector_db/` : on ne lit qu'un fichier CSV.
 """
 
 import csv

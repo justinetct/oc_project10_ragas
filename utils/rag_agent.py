@@ -63,16 +63,19 @@ def get_agent():
     return _agent
 
 
-def generate_rag_answer(question, retrieved_contexts):
+def generate_rag_answer(question, retrieved_contexts, extra_instruction=""):
     """Génère la réponse RAG via l'agent Pydantic AI et retourne son texte.
 
     La structure de la sortie (`RagAnswerOutput.answer`, non vide) est validée par
-    Pydantic à l'intérieur de l'agent. Les contextes (FAISS) sont passés dans le
-    prompt, pas inventés par le LLM.
+    Pydantic à l'intérieur de l'agent. Les contextes sont passés dans le prompt, pas
+    inventés par le LLM. `extra_instruction` (optionnel) est ajouté en tête du prompt
+    — utilisé par le routage hybride pour rappeler que les chiffres SQL font foi.
     """
     prompt = SYSTEM_PROMPT.format(
         context_str=build_context(retrieved_contexts),
         question=question,
     )
+    if extra_instruction:
+        prompt = f"{extra_instruction.strip()}\n\n{prompt}"
     result = get_agent().run_sync(prompt)
     return result.output.answer

@@ -1,19 +1,14 @@
-# MistralChat.py (version RAG)
+# MistralChat.py (version RAG + routage SQL)
 import streamlit as st
 import logging
 import logfire
-from pydantic import ValidationError
 
 # --- Importations depuis vos modules ---
 try:
-    from utils.config import (
-        MISTRAL_API_KEY, MODEL_NAME, SEARCH_K,
-        APP_TITLE, NAME
-    )
+    from utils.config import MISTRAL_API_KEY, MODEL_NAME, APP_TITLE, NAME
     from utils.vector_store import VectorStoreManager
-    from utils.schemas import RagAnswer
     from utils.observability import configure_logfire
-    from utils.rag_agent import generate_rag_answer
+    from utils.router import ROUTE_LABELS, answer_question
 except ImportError as e:
     st.error(f"Erreur d'importation: {e}. Vérifiez la structure de vos dossiers et les fichiers dans 'utils'.")
     st.stop()
@@ -90,48 +85,33 @@ if prompt := st.chat_input(f"Posez votre question sur la {NAME}..."):
         # On arrête ici car on ne peut pas faire de RAG
         st.stop()
 
-    # === Logique RAG ===
-    # Tout le tour (recherche + génération) est regroupé dans un seul span Logfire
-    # "question_rag", avec un span imbriqué "generation_reponse_rag" pour la génération.
-    with logfire.span("question_rag", question=prompt):
+    # === Routage (RAG texte / SQL chiffres / hybride / hors-sujet) ===
+    # Tout le tour est regroupé dans un span Logfire "question". Le routage choisit le
+    # chemin (FAISS, SQL Tool sécurisé, ou les deux) ; l'orchestration vit dans utils/router.py.
+    with logfire.span("question", question=prompt):
         logfire.info("question_utilisateur", question=prompt)
 
-        # 3. Rechercher le contexte dans le Vector Store
-        try:
-            logging.info(f"Recherche de contexte pour la question: '{prompt}' avec k={SEARCH_K}")
-            search_results = vector_store_manager.search(prompt, k=SEARCH_K)
-            logging.info(f"{len(search_results)} chunks trouvés dans le Vector Store.")
-        except Exception as e:
-            st.error(f"Une erreur est survenue lors de la recherche d'informations pertinentes: {e}")
-            logging.exception(f"Erreur pendant vector_store_manager.search pour la query: {prompt}")
-            search_results = [] # On continue sans contexte si la recherche échoue
-
-        logfire.info("contextes_recuperes", n_contexts=len(search_results))
-
-        # 4. Générer la réponse via l'agent Pydantic AI (sortie typée, validée Pydantic).
-        #    Les contextes récupérés (FAISS) sont passés à l'agent ; l'affichage et le
-        #    comportement utilisateur de l'interface restent identiques.
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
-            message_placeholder.text("...") # Indicateur simple
+            message_placeholder.text("...")  # Indicateur simple
 
-            with logfire.span("generation_reponse_rag"):
-                try:
-                    response_content = generate_rag_answer(prompt, search_results)
-                except Exception:
-                    logging.exception("Erreur lors de la génération via l'agent Pydantic AI")
-                    response_content = "Je suis désolé, une erreur technique m'empêche de répondre. Veuillez réessayer plus tard."
-
-            # Validation Pydantic de la réponse finale (ne change ni l'affichage ni le contenu).
             try:
-                RagAnswer(question=prompt, answer=response_content, retrieved_contexts=search_results)
-            except ValidationError as e:
-                logging.warning(f"Réponse RAG non conforme au schéma RagAnswer : {e}")
+                routed = answer_question(prompt, vector_store_manager)
+                response_content = routed.answer
+                route_label = ROUTE_LABELS.get(routed.route, routed.route)
+            except Exception:
+                logging.exception("Erreur lors du routage / de la génération")
+                response_content = "Je suis désolé, une erreur technique m'empêche de répondre. Veuillez réessayer plus tard."
+                route_label = None
 
-            # Affichage de la réponse complète
+            logfire.info("reponse_routee", route=route_label)
+
+            # Affichage de la réponse, puis indication discrète de la route utilisée.
             message_placeholder.write(response_content)
+            if route_label:
+                st.caption(f"Route : {route_label}")
 
-        # 5. Ajouter la réponse de l'assistant à l'historique (pour affichage UI)
+        # Ajout de la réponse de l'assistant à l'historique (pour affichage UI)
         st.session_state.messages.append({"role": "assistant", "content": response_content})
 
 # Petit pied de page optionnel

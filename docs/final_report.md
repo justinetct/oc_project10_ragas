@@ -377,9 +377,67 @@ Le tool renvoie des données structurées ; l'assistant rédigera la réponse.
 
 Le module est couvert par 20 tests sans appel API (`tests/test_sql_tool.py`) : requêtes valides, refus d'écriture, plafond de lignes, erreurs propres, appel du tool via `.invoke(...)`.
 
-Limites : les requêtes SQL sont écrites à la main pour l'instant. Le routage automatique (choisir entre RAG texte et SQL, puis générer la requête) sera fait dans une tâche séparée.
+### Routage intégré : l'assistant choisit son chemin
 
-`TODO : après intégration de l'outil SQL dans l'assistant (routage), relancer l'évaluation RAGAS et ajouter le comparatif avant/après SQL.`
+Le routage automatique est maintenant branché, dans l'application comme dans l'évaluation. Le module `utils/router.py` classe chaque question par des règles de mots-clés explicites — aucun appel LLM pour router — vers quatre chemins :
+
+| Route | Cas | Traitement |
+|---|---|---|
+| `rag` | documents, opinions, discussions Reddit | FAISS + génération (chemin v2 inchangé) |
+| `sql` | question chiffrée (classement, maximum, total, fiche joueur…) | requête prédéfinie via le SQL Tool, réponse directe sans LLM |
+| `hybrid` | chiffre + interprétation demandés ensemble | SQL d'abord (le chiffre fait foi), rédaction LLM ensuite |
+| `out_of_scope` | hors NBA / hors sources | refus poli, aucun appel externe |
+
+Deux choix structurants côté risque :
+
+- **aucun SQL libre** : la route `sql` s'appuie sur un mapping de requêtes prédéfinies (`utils/sql/nba_intents.py`, colonnes sur liste blanche) exécutées par le SQL Tool en lecture seule, qui reste l'unique couche d'exécution. Une question chiffrée hors couverture reçoit une réponse honnête « non pris en charge » plutôt qu'un résultat inventé ;
+- **un seul pipeline** : `MistralChat.py` et `scripts/evaluate_ragas.py` passent par la même fonction `answer_question()`. L'évaluation mesure donc exactement ce que les utilisateurs utilisent.
+
+L'évaluation porte sur le jeu figé E01–E15, inchangé depuis la baseline : c'est le même jeu que pour v1 et v2, ce qui rend la comparaison avant/après directe et reproductible avec `poetry run python scripts/evaluate_ragas.py`.
+
+### Résultats : avant / après routage
+
+Trois conditions ont été mesurées sur ce jeu (mêmes métriques et même juge que les évaluations précédentes) : tout-RAG (comportement v2), routage avec hybride `sql_only`, routage avec hybride `sql_with_rag_context`.
+
+Scores moyens RAGAS (E01–E15) :
+
+| Condition | faithfulness | answer_relevancy | context_precision | context_recall |
+|---|---|---|---|---|
+| RAG texte seul (baseline) | 0,374 | 0,437 | 0,362 | 0,433 |
+| Routage · hybride `sql_only` | 0,482 | 0,665 | 0,532 | 0,611 |
+| Routage · hybride `sql_with_rag_context` | 0,472 | 0,613 | 0,623 | 0,611 |
+
+Le routage améliore les quatre métriques, surtout la pertinence (answer_relevancy 0,44 → 0,61–0,67) et la précision/rappel du contexte, parce que les réponses chiffrées s'appuient désormais sur un fait SQL exact plutôt que sur des extraits approximatifs.
+
+Lecture par catégorie (faithfulness) :
+
+- **chiffrées : 0,49 → 0,70–0,72.** Le gain attendu : le SQL renvoie la valeur exacte (Shai Gilgeous-Alexander 2 485 points ; Seth Curry 45,6 % à 3 points avec le filtre de volume) là où le RAG approximait ou hallucinait ;
+- **bruitées : 0,03 → 0,47–0,55.** « meilleur tireur a 3pts cette saion?? » est désormais comprise comme une intention chiffrée et routée vers SQL ;
+- **mixtes : 0,15 → 0,17–0,18.** Gain marginal : la part interprétative de la réponse reste difficilement « citable » pour le juge (voir limites) ;
+- **hors-sujet : 0,33 → 0,00.** Régression apparente qui n'en est pas une : le refus poli — comportement métier voulu, désormais systématique — ne cite aucun contexte, donc RAGAS le note 0. C'est une limite de la métrique sur les refus, pas du système ; l'appréciation métier se lit séparément.
+
+La distribution des routes sur E01–E15 est conforme à la conception : 5 `rag`, 6 `sql`, 2 `hybrid`, 2 `out_of_scope`.
+
+### Choix du mode hybride
+
+Les deux variantes ne diffèrent que sur les questions `hybrid` (E05 et E06 dans le jeu figé) : `sql_only` rédige à partir du seul chiffre SQL ; `sql_with_rag_context` ajoute quelques extraits FAISS pour la couche qualitative, avec une consigne explicite : les chiffres SQL font foi.
+
+Des runs répétés (3 runs `sql_only`, 2 runs `sql_with_rag_context`) montrent que l'écart entre les deux est un **artefact de la variance du juge**, pas une différence réelle :
+
+| Mode hybride | faithfulness moyenne (E05–E06) | variance run à run |
+|---|---|---|
+| `sql_only` | 0,19 (3 runs) | E05 : 0,14 / 0,24 / 0,33 |
+| `sql_with_rag_context` | 0,22 (2 runs) | E05 : 0,19 / 0,44 |
+
+L'écart résiduel (+0,03) est plus petit que les oscillations du juge sur une même question d'un run à l'autre. Les deux modes sont donc **statistiquement indistinguables** sur la fidélité.
+
+**Choix retenu : `sql_only` par défaut.** À fidélité équivalente, c'est le mode le plus simple (pas d'appel FAISS supplémentaire sur les questions hybrides), le moins coûteux et le plus facile à expliquer : le chiffre SQL est la source de vérité, on ne lui adjoint pas un contexte texte dont l'apport n'est pas mesurable. Le mode `sql_with_rag_context` reste disponible (`HYBRID_MODE=sql_with_rag_context`) pour les cas où l'interprétation gagnerait à s'appuyer sur les discussions Reddit, mais il n'est pas activé par défaut.
+
+### Limites du routage actuel
+
+- routage par mots-clés : robuste sur le jeu testé, mais une question très déformée peut être mal classée (E12 reste en `rag`) ;
+- couverture SQL volontairement bornée aux requêtes prédéfinies : pas de NL→SQL libre, donc pas de réponse aux agrégats non prévus (ex. splits domicile/extérieur, absents de la base) — l'assistant le dit explicitement ;
+- RAGAS juge mal deux familles de réponses correctes : les refus (hors-sujet, note 0 par construction) et les réponses interprétatives des questions mixtes ; le comparatif chiffré est donc complété d'une lecture qualitative des réponses, en particulier sur les questions mixtes.
 
 ---
 
@@ -393,9 +451,11 @@ L'évaluation RAGAS a montré ses limites : ancrage faible (`faithfulness` à 0,
 
 RAG v2 — contrôlé renforce le pipeline avec Pydantic, Pydantic AI et Logfire. Après ces changements, la `faithfulness` moyenne passe de 0,25 à 0,36 sur 5 runs, avec une baisse de la pertinence directe. C'est une tendance à lire avec prudence : le juge varie d'un run à l'autre.
 
+RAG v3 — hybride SQL branche le routage automatique : RAG texte pour le documentaire, requêtes SQL prédéfinies pour le chiffré, combinaison des deux pour les questions mixtes, refus hors périmètre. Sur le jeu figé E01–E15, le routage fait passer la `faithfulness` moyenne de 0,37 à 0,47–0,48 et la pertinence des réponses de 0,44 à 0,61–0,67, avec des gains concentrés exactement là où le RAG seul échouait : questions chiffrées et questions bruitées à intention chiffrée.
+
 ### Prochaine étape
 
-La base SQLite et le SQL Tool en lecture seule sont prêts pour RAG v3 — hybride SQL. La prochaine étape est le routage : laisser l'assistant choisir entre RAG texte et SQL selon la question. Une nouvelle évaluation permettra ensuite de comparer RAG v2 — contrôlé et RAG v3 — hybride SQL.
+Le choix par défaut du mode hybride (`sql_only` vs `sql_with_rag_context`) est en cours de validation par des runs de variance. Au-delà, deux pistes naturelles : élargir la couverture des requêtes prédéfinies (nouvelles intentions chiffrées) et remplacer le routage par mots-clés par un classifieur plus robuste si le besoin apparaît à l'usage — sans jamais ouvrir de génération SQL libre.
 
 > **Ce qui a été volontairement exclu**
 > - pas de fine-tuning du modèle ;

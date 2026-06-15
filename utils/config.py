@@ -27,8 +27,20 @@ EMBEDDING_BATCH_SIZE = 32           # Taille des lots pour l'API d'embedding
 # --- Configuration de la Recherche ---
 SEARCH_K = 5                        # Nombre de documents à récupérer par défaut
 
+# --- Configuration du routage (RAG texte / SQL chiffres) ---
+# Mode de réponse aux questions hybrides (chiffre + interprétation) :
+# - "sql_only"            : le chiffre vérifié par SQL est le seul contexte ;
+# - "sql_with_rag_context": on ajoute quelques extraits FAISS pour enrichir
+#   l'interprétation, sans jamais contredire les chiffres SQL (qui font foi).
+HYBRID_MODE = os.getenv("HYBRID_MODE", "sql_only")
+_VALID_HYBRID_MODES = ("sql_only", "sql_with_rag_context")
+if HYBRID_MODE not in _VALID_HYBRID_MODES:
+    raise ValueError(f"HYBRID_MODE invalide : {HYBRID_MODE}. Valeurs possibles : {_VALID_HYBRID_MODES}")
+HYBRID_RAG_K = 3                    # Nb d'extraits FAISS ajoutés en mode sql_with_rag_context
+
 # --- Configuration de l'évaluation RAGAS ---
 EVALUATION_DIR = "evaluation"
+# Jeu figé E01-E15 : seul jeu officiel de comparaison avant/après sur tout le projet.
 EVALUATION_DATASET_FILE = os.path.join(EVALUATION_DIR, "evaluation_questions.csv")
 EVALUATION_RESULTS_DIR = os.path.join(EVALUATION_DIR, "results")
 RAGAS_BASELINE_RESULTS_FILE = os.path.join(EVALUATION_RESULTS_DIR, "ragas_baseline_results.csv")

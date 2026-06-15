@@ -24,6 +24,7 @@ Versions repères :
 - [Utilisation](#utilisation)
   - [Indexation des documents](#indexation-des-documents)
   - [Lancement de l'application](#lancement-de-lapplication)
+- [Routage RAG / SQL](#routage-rag--sql)
 - [Évaluation et résultats](#évaluation-et-résultats)
   - [Audit et limites](#audit-et-limites)
   - [Dataset d'évaluation](#dataset-dévaluation)
@@ -39,10 +40,12 @@ Versions repères :
 ├── docs/
 │   ├── audit_initial.md         # Synthèse de l'audit initial
 │   ├── final_report.md          # Rapport de mise en place et d'évaluation
+│   ├── routing.md               # Routes RAG / SQL / hybride (référence)
+│   ├── sqlite_schema.md         # Schéma de la base SQLite NBA
 │   └── img/                     # Captures utilisées dans le rapport
 ├── evaluation/
-│   ├── evaluation_questions.csv # Dataset d'évaluation versionné
-│   └── results/                 # Résultats de la baseline RAGAS
+│   ├── evaluation_questions.csv # Jeu figé E01-E15 (comparaison officielle)
+│   └── results/                 # Résultats RAGAS (par condition)
 ├── inputs/                      # Documents sources
 │   ├── Reddit 1.pdf
 │   ├── Reddit 2.pdf
@@ -53,7 +56,7 @@ Versions repères :
 │   ├── audit.ipynb              # Notebook d'audit initial
 │   └── ragas_baseline_results.ipynb  # Illustration de la baseline RAGAS
 ├── scripts/
-│   ├── evaluate_ragas.py        # Baseline RAGAS du prototype sur le dataset
+│   ├── evaluate_ragas.py        # Évaluation RAGAS (pipeline routé ou baseline RAG)
 │   └── load_excel_to_db.py      # Construit la base SQLite NBA depuis l'Excel
 ├── tests/                       # Tests qualité et validation
 ├── utils/
@@ -61,8 +64,10 @@ Versions repères :
 │   ├── data_loader.py           # Chargement OCR / Excel / documents
 │   ├── observability.py         # Configuration optionnelle de Logfire
 │   ├── rag_agent.py             # Agent Pydantic AI : génération de la réponse à sortie typée
+│   ├── router.py                # Routage RAG / SQL / hybride / hors-sujet
 │   ├── schemas.py               # Modèles Pydantic (validation du pipeline RAG)
-│   ├── sql/                     # Base SQLite NBA : modèles, chargement Excel, requêtes
+│   ├── sql/                     # Base SQLite NBA : modèles, chargement Excel, requêtes, mapping
+│   ├── text.py                  # Normalisation et détection de mots-clés (routage)
 │   └── vector_store.py          # Création et interrogation de l'index FAISS
 ├── .env.example                 # Exemple de configuration sans clé réelle
 ├── .gitignore                   # Fichiers locaux exclus du versionnement
@@ -173,6 +178,25 @@ L'application est ensuite accessible sur :
 http://localhost:8501
 ```
 
+## Routage RAG / SQL
+
+Depuis **RAG v3 — hybride SQL**, l'assistant choisit automatiquement le chemin selon la question :
+
+- **RAG texte** (FAISS) pour les questions documentaires, opinions et discussions Reddit ;
+- **SQL chiffres** (SQL Tool en lecture seule) pour les questions chiffrées : classements, maximum, total, fiche d'un joueur ;
+- **Hybride** pour les questions mixtes : le chiffre est récupéré par SQL (fait vérifié), puis la réponse est rédigée par le LLM ;
+- **Hors périmètre** : refus poli pour les questions hors NBA.
+
+L'orchestration est dans `utils/router.py`, le mapping question → SQL dans `utils/sql/nba_intents.py`. Le SQL n'est **jamais** écrit par le LLM : ce sont des requêtes prédéfinies, exécutées par le SQL Tool sécurisé. Pour le 3P%, un filtre de volume (≥ 100 tentatives) évite l'artefact d'un joueur à 100 % sur 1 tir. L'interface Streamlit affiche discrètement la route utilisée.
+
+Préalable aux routes SQL / hybride — construire la base SQLite :
+
+```bash
+poetry run python scripts/load_excel_to_db.py
+```
+
+Le mode hybride a deux variantes, réglées par la variable `HYBRID_MODE` (`sql_only` par défaut, ou `sql_with_rag_context`). Détail des routes, cas couverts et limites : [docs/routing.md](docs/routing.md).
+
 ## Évaluation et résultats
 
 ### Audit et limites
@@ -192,11 +216,9 @@ Les limites principales sont résumées ici : OCR parfois bruité, Excel indexé
 
 ### Dataset d'évaluation
 
-Le fichier `evaluation/evaluation_questions.csv` contient le jeu de questions utilisé pour évaluer l'assistant RAG.
+Le fichier `evaluation/evaluation_questions.csv` contient le jeu **figé E01–E15**, identique depuis la baseline : c'est le seul jeu de la comparaison officielle v1 → v2 → v3. Il couvre les cas simples, complexes, chiffrés, mixtes, bruités et hors sujet.
 
-Il couvre plusieurs cas : questions simples, complexes, chiffrées, mixtes, bruitées et hors sujet. Il sert de base stable pour comparer les versions du pipeline.
-
-*Une fois la baseline calculée, ce fichier ne doit plus être modifié.*
+*Le jeu figé E01–E15 ne doit plus être modifié une fois la baseline calculée.*
 
 La méthodologie d'évaluation est détaillée dans le [rapport](docs/final_report.md#3-méthodologie-dévaluation).
 
@@ -221,6 +243,16 @@ poetry run python scripts/evaluate_ragas.py
 ```
 
 Prérequis : un fichier `.env` avec `MISTRAL_API_KEY` et un index FAISS déjà construit (`poetry run python indexer.py`).
+
+Depuis le routage, l'évaluation passe par le **même pipeline que l'application** (`utils/router.py`) et porte sur le jeu figé E01–E15. Trois conditions peuvent être comparées sur le même jeu de questions :
+
+```bash
+poetry run python scripts/evaluate_ragas.py --eval-mode baseline_rag
+HYBRID_MODE=sql_only poetry run python scripts/evaluate_ragas.py --eval-mode routed
+HYBRID_MODE=sql_with_rag_context poetry run python scripts/evaluate_ragas.py --eval-mode routed
+```
+
+Chaque condition écrit ses propres fichiers `ragas_<condition>_results.csv` / `_summary.json` (colonnes `route` et `mode` incluses). Le détail et la synthèse des résultats figurent dans le [rapport](docs/final_report.md).
 
 Les métriques utilisées sont :
 
@@ -279,6 +311,6 @@ Pour préparer **RAG v3 — hybride SQL**, le projet fournit un SQL Tool LangCha
 
 - Il interroge la base SQLite locale `data/nba.sqlite`, générée par `poetry run python scripts/load_excel_to_db.py`.
 - Il n'accepte que des requêtes `SELECT` : mots-clés d'écriture refusés, une seule requête à la fois, nombre de lignes plafonné, connexion ouverte en lecture seule.
-- Il complète le RAG texte sans le remplacer : FAISS reste utilisé pour les documents (Reddit/PDF). Le routage automatique entre RAG et SQL sera fait dans une étape séparée.
+- Il complète le RAG texte sans le remplacer : FAISS reste utilisé pour les documents (Reddit/PDF). Le routage automatique entre RAG, SQL et hybride est désormais branché (voir [Routage RAG / SQL](#routage-rag--sql) et [docs/routing.md](docs/routing.md)).
 
-Le détail (règles de sécurité, exemples de requêtes, limites) est dans le [rapport](docs/final_report.md#7-préparation-de-rag-v3--hybride-sql) et dans `docs/sqlite_schema.md`.
+Le détail (règles de sécurité, exemples de requêtes, limites) est dans le [rapport](docs/final_report.md) et dans `docs/sqlite_schema.md`.

@@ -45,22 +45,20 @@ import math
 import time
 import logging
 import datetime
+import argparse
 
 import logfire
-from pydantic import ValidationError
 
 from utils.config import (
-    MISTRAL_API_KEY, MODEL_NAME, EMBEDDING_MODEL, SEARCH_K,
+    MISTRAL_API_KEY, MODEL_NAME, EMBEDDING_MODEL, HYBRID_MODE,
     FAISS_INDEX_FILE, DOCUMENT_CHUNKS_FILE,
     EVALUATION_DATASET_FILE, EVALUATION_RESULTS_DIR,
-    RAGAS_BASELINE_RESULTS_FILE, RAGAS_BASELINE_SUMMARY_FILE,
     RAGAS_JUDGE_MODEL, RAGAS_METRIC_COLUMNS, RAGAS_ANSWER_RELEVANCY_STRICTNESS,
     RAGAS_MAX_WORKERS, RAGAS_REQUESTS_PER_SECOND, RAGAS_TIMEOUT_SECONDS,
     RAGAS_MAX_RETRIES, RAGAS_MAX_WAIT_SECONDS, RAGAS_LIMIT_QUESTIONS,
 )
 from utils.vector_store import VectorStoreManager
-from utils.schemas import RagAnswer
-from utils.rag_agent import generate_rag_answer
+from utils.router import answer_question
 from utils.observability import configure_logfire
 
 import ragas
@@ -95,18 +93,14 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 # --- Constantes ---
-# La configuration RAGAS est centralisée dans utils/config.py ; on garde ici des
-# alias courts (chemins) pour la lisibilité.
 DATASET_PATH = EVALUATION_DATASET_FILE
 RESULTS_DIR = EVALUATION_RESULTS_DIR
-RESULTS_CSV = RAGAS_BASELINE_RESULTS_FILE
-SUMMARY_JSON = RAGAS_BASELINE_SUMMARY_FILE
 
-# Le prompt RAG et la génération vivent dans utils/rag_agent.py (agent Pydantic AI).
+# La génération vit dans utils/rag_agent.py ; le routage dans utils/router.py.
 
-# Colonnes du CSV de résultats détaillés.
+# Colonnes du CSV de résultats détaillés (route + mode tracent le chemin réellement suivi).
 RESULT_COLUMNS = [
-    "id", "category", "question", "answer", "retrieved_contexts",
+    "id", "category", "route", "mode", "question", "answer", "retrieved_contexts",
     "reference_answer", "expected_behavior", "source_hint",
     "requires_sql_future", "notes",
 ] + RAGAS_METRIC_COLUMNS
@@ -118,60 +112,54 @@ def load_dataset(path=DATASET_PATH):
         return list(csv.DictReader(f))
 
 
-def run_rag_for_question(question, manager, attempts=3):
-    """Exécute le pipeline RAG du prototype sur une question, avec ré-essais.
+def run_rag_for_question(question, manager, attempts=3, force_route=None):
+    """Exécute le pipeline de l'assistant (routage) sur une question, avec ré-essais.
 
-    Recherche FAISS puis génération via l'agent Pydantic AI à sortie typée
-    (`utils/rag_agent.py`) — le même agent que l'application. La recherche
-    (embeddings) comme la génération peuvent échouer sur un 429 transitoire de
-    Mistral : on ré-essaie chacune avec un petit backoff, pour ne pas corrompre les
-    données (contexte perdu) ni faire échouer toute l'évaluation. Retourne la
-    réponse générée et les textes des chunks récupérés.
+    Passe par `answer_question` (`utils/router.py`) — le MÊME chemin que l'application —
+    pour que l'évaluation mesure le pipeline réellement utilisé. `force_route="rag"`
+    force la route RAG (condition baseline « RAG texte seul »). Un 429 transitoire de
+    Mistral (génération ou embeddings) est réessayé avec un petit backoff ; pour la
+    route RAG, un contexte vide trahit souvent un 429 sur les embeddings -> on réessaie.
     """
-    results = []
-    for attempt in range(1, attempts + 1):
-        results = manager.search(question, k=SEARCH_K)
-        if results:
-            break
-        logging.warning(f"Recherche vide (tentative {attempt}/{attempts}, probable 429) : '{question[:60]}'")
-        time.sleep(2 * attempt)
-    if not results:
-        logging.error(f"Recherche définitivement vide : '{question[:60]}'")
-
-    answer = ""
+    routed = None
     for attempt in range(1, attempts + 1):
         try:
-            answer = generate_rag_answer(question, results)
-            if answer and answer.strip():
+            routed = answer_question(question, manager, force_route=force_route)
+            answer_ok = bool(routed.answer and routed.answer.strip())
+            context_ok = routed.route != "rag" or bool(routed.retrieved_contexts)
+            if answer_ok and context_ok:
                 break
+            logging.warning(f"Réponse incomplète (tentative {attempt}/{attempts}, probable 429) : '{question[:60]}'")
         except Exception as exc:
-            logging.warning(f"Génération échouée (tentative {attempt}/{attempts}) : {exc}")
-            time.sleep(2 * attempt)
-    if not (answer and answer.strip()):
-        answer = "Désolé, je n'ai pas pu générer de réponse."
-        logging.error(f"Génération définitivement échouée après {attempts} tentatives : '{question[:60]}'")
-    retrieved_contexts = [r["text"] for r in results]
-    # Validation Pydantic de la réponse RAG (ne change pas ce qui est retourné).
-    try:
-        RagAnswer(question=question, answer=answer, retrieved_contexts=results)
-    except ValidationError as exc:
-        logging.warning(f"Réponse RAG non conforme au schéma RagAnswer : {exc}")
-    return {"answer": answer, "retrieved_contexts": retrieved_contexts}
+            logging.warning(f"Réponse échouée (tentative {attempt}/{attempts}) : {exc}")
+        time.sleep(2 * attempt)
+
+    if routed is None or not (routed.answer and routed.answer.strip()):
+        logging.error(f"Réponse définitivement échouée après {attempts} tentatives : '{question[:60]}'")
+        return {"answer": "Désolé, je n'ai pas pu générer de réponse.", "retrieved_contexts": [], "route": "error", "mode": None}
+    return {
+        "answer": routed.answer,
+        "retrieved_contexts": routed.retrieved_contexts,
+        "route": routed.route,
+        "mode": routed.mode,
+    }
 
 
-def run_rag_inference(rows, manager):
-    """Étape 1 — exécute le RAG sur chaque question et garde les infos métier."""
+def run_rag_inference(rows, manager, force_route=None):
+    """Étape 1 — exécute le pipeline sur chaque question et garde les infos métier."""
     records = []
     total = len(rows)
     for i, row in enumerate(rows, start=1):
-        print(f"  [{i}/{total}] {row['id']} ({row['category']}) — exécution du RAG…")
-        # Un span par question : la recherche et la génération (et les appels
-        # Mistral auto-tracés) sont regroupés sous ce span dans Logfire.
-        with logfire.span("rag_question {question_id}", question_id=row["id"], category=row["category"]):
-            rag = run_rag_for_question(row["question"], manager)
+        print(f"  [{i}/{total}] {row['id']} ({row['category']}) — exécution du pipeline…")
+        # Un span par question : routage, recherche/SQL et génération (appels Mistral
+        # auto-tracés) sont regroupés sous ce span dans Logfire.
+        with logfire.span("question {question_id}", question_id=row["id"], category=row["category"]):
+            rag = run_rag_for_question(row["question"], manager, force_route=force_route)
         records.append({
             "id": row["id"],
             "category": row["category"],
+            "route": rag["route"],
+            "mode": rag["mode"],
             "question": row["question"],
             "answer": rag["answer"],
             "retrieved_contexts": rag["retrieved_contexts"],
@@ -301,8 +289,8 @@ def merge_scores(records, ragas_df):
     return merged
 
 
-def summarize_ragas_results(merged):
-    """Résumé : moyennes globales et par catégorie (valeurs manquantes ignorées)."""
+def summarize_ragas_results(merged, eval_label):
+    """Résumé : moyennes globales, par catégorie et par route (manquants ignorés)."""
     def average(items, column):
         values = [r.get(column) for r in items if not _is_missing(r.get(column))]
         return round(sum(values) / len(values), 4) if values else None
@@ -317,10 +305,18 @@ def summarize_ragas_results(merged):
         cat: {m: average([r for r in merged if r["category"] == cat], m) for m in RAGAS_METRIC_COLUMNS}
         for cat in categories
     }
+    routes = sorted({r.get("route") or "?" for r in merged})
+    mean_by_route = {
+        route: {m: average([r for r in merged if (r.get("route") or "?") == route], m) for m in RAGAS_METRIC_COLUMNS}
+        for route in routes
+    }
+    route_distribution = {route: sum(1 for r in merged if (r.get("route") or "?") == route) for route in routes}
 
     return {
         "run_datetime": datetime.datetime.now().isoformat(timespec="seconds"),
+        "eval_label": eval_label,
         "model": MODEL_NAME,
+        "hybrid_mode": HYBRID_MODE,
         "judge_model": RAGAS_JUDGE_MODEL,
         "embedding_model": EMBEDDING_MODEL,
         "ragas_version": ragas.__version__,
@@ -331,13 +327,16 @@ def summarize_ragas_results(merged):
         "n_questions": len(merged),
         "n_evaluated": len(merged),
         "n_scored_per_metric": n_scored,
+        "route_distribution": route_distribution,
         "mean_scores": mean_scores,
         "mean_scores_by_category": mean_by_category,
+        "mean_scores_by_route": mean_by_route,
         "notes_on_metrics": (
             "context_precision et context_recall utilisent reference_answer comme "
-            "référence. Pour les questions hors_sujet ou impossibles, cette référence "
-            "décrit un comportement attendu (refus, donnée absente) et non des passages "
-            "sources : leurs scores y sont donc faibles et à interpréter avec prudence."
+            "référence. Pour les questions hors_sujet ou non couvertes (réponse honnête "
+            "« non pris en charge »), cette référence décrit un comportement attendu "
+            "et non des passages sources : leurs scores y sont donc faibles et à "
+            "interpréter avec prudence, séparément de l'appréciation métier."
         ),
     }
 
@@ -363,19 +362,25 @@ def save_results(merged, summary, results_csv, summary_json):
         json.dump(summary, f, ensure_ascii=False, indent=2, allow_nan=False)
 
 
-def output_paths(partial):
-    """Chemins de sortie. Un run partiel écrit des fichiers '_partial' séparés,
-    pour ne pas écraser la baseline complète déjà calculée."""
-    if not partial:
-        return RESULTS_CSV, SUMMARY_JSON
+def labeled_output_paths(label):
+    """Chemins de sortie nommés par condition (baseline_rag / routed_<mode>)."""
     return (
-        os.path.join(RESULTS_DIR, "ragas_baseline_results_partial.csv"),
-        os.path.join(RESULTS_DIR, "ragas_baseline_summary_partial.json"),
+        os.path.join(RESULTS_DIR, f"ragas_{label}_results.csv"),
+        os.path.join(RESULTS_DIR, f"ragas_{label}_summary.json"),
     )
 
 
 def main():
-    print("=== Baseline RAGAS — prototype RAG NBA ===")
+    parser = argparse.ArgumentParser(description="Évaluation RAGAS de l'assistant NBA.")
+    parser.add_argument(
+        "--eval-mode", choices=("routed", "baseline_rag"), default="routed",
+        help="routed = pipeline complet avec routage ; baseline_rag = tout en RAG texte (condition « avant »).",
+    )
+    args = parser.parse_args()
+    force_route = "rag" if args.eval_mode == "baseline_rag" else None
+    label = "baseline_rag" if args.eval_mode == "baseline_rag" else f"routed_{HYBRID_MODE}"
+
+    print(f"=== Évaluation RAGAS — assistant RAG NBA (condition : {label}) ===")
     configure_logfire()  # observabilité optionnelle (Logfire) ; non bloquante sans token
 
     # 1. Vérifications préalables (sans jamais afficher la clé).
@@ -400,14 +405,15 @@ def main():
     partial = RAGAS_LIMIT_QUESTIONS is not None
     if partial:
         rows = rows[:RAGAS_LIMIT_QUESTIONS]
-        print(f"Dataset chargé : {len(rows)} questions — MODE PARTIEL (checkpoint, n'écrase pas la baseline).")
+        label += "_partial"
+        print(f"Dataset chargé : {len(rows)} questions — MODE PARTIEL (checkpoint).")
     else:
         print(f"Dataset chargé : {len(rows)} questions ({DATASET_PATH}).")
-    results_csv, summary_json = output_paths(partial)
+    results_csv, summary_json = labeled_output_paths(label)
 
-    # Étape 1 : RAG sur chaque question (génération via l'agent Pydantic AI).
-    print("Étape 1/3 : exécution du pipeline RAG (1 réponse par question)…")
-    records = run_rag_inference(rows, manager)
+    # Étape 1 : pipeline de l'assistant (routage) sur chaque question.
+    print("Étape 1/3 : exécution du pipeline (1 réponse par question)…")
+    records = run_rag_inference(rows, manager, force_route=force_route)
 
     # Étape 2 : dataset RAGAS + juge + métriques.
     n_jobs = len(records) * len(RAGAS_METRIC_COLUMNS)
@@ -425,12 +431,13 @@ def main():
     # Étape 3 : fusion + résumé + sauvegarde.
     print("Étape 3/3 : fusion des scores et écriture des résultats…")
     merged = merge_scores(records, ragas_df)
-    summary = summarize_ragas_results(merged)
+    summary = summarize_ragas_results(merged, label)
     save_results(merged, summary, results_csv, summary_json)
 
     # Affichage console.
-    print("\n=== Résultats baseline (4 métriques RAGAS) ===")
+    print(f"\n=== Résultats ({label}) — 4 métriques RAGAS ===")
     print(f"Questions évaluées : {summary['n_evaluated']}/{summary['n_questions']}")
+    print(f"Routes utilisées   : {summary['route_distribution']}")
     print(f"Scores notés par métrique : {summary['n_scored_per_metric']}")
     print("Scores moyens :")
     for m in RAGAS_METRIC_COLUMNS:
@@ -438,6 +445,9 @@ def main():
     print("Scores moyens par catégorie :")
     for cat, scores in summary["mean_scores_by_category"].items():
         print(f"  - {cat:11} {scores}")
+    print("Scores moyens par route :")
+    for route, scores in summary["mean_scores_by_route"].items():
+        print(f"  - {route:13} {scores}")
 
     # Bilan clair : est-ce que TOUT a bien été évalué ?
     all_scored = all(n == summary["n_questions"] for n in summary["n_scored_per_metric"].values())
