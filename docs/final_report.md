@@ -414,14 +414,13 @@ L'application (`MistralChat.py`) et l'évaluation (`scripts/evaluate_ragas.py`) 
 L'évaluation officielle porte sur le jeu figé E01–E15, inchangé depuis la baseline. Un jeu étendu de questions chiffrées (`evaluation/evaluation_questions_sql_extended.csv`, ~47 questions) sert à analyser plus finement les modes SQL ; il est étudié à part et ne remplace pas le jeu figé.
 
 ### Résultats : avant / après routage
-
-Trois conditions ont été mesurées sur ce jeu (mêmes métriques et même juge que les évaluations précédentes) : tout-RAG (comportement v2), routage avec hybride `sql_only`, routage avec hybride `sql_with_rag_context`.
+Trois conditions sont comparées sur le jeu figé, avec les mêmes métriques et le même juge que les évaluations précédentes : RAG texte seul avant routage SQL, routage avec hybride `sql_only`, routage avec hybride `sql_with_rag_context`.
 
 Scores moyens RAGAS (E01–E15) :
 
 | Condition | faithfulness | answer_relevancy | context_precision | context_recall |
 |---|---|---|---|---|
-| RAG texte seul (baseline) | 0,374 | 0,437 | 0,362 | 0,433 |
+| RAG texte seul (avant routage SQL) | 0,374 | 0,437 | 0,362 | 0,433 |
 | Routage · hybride `sql_only` | 0,482 | 0,665 | 0,532 | 0,611 |
 | Routage · hybride `sql_with_rag_context` | 0,472 | 0,613 | 0,623 | 0,611 |
 
@@ -438,18 +437,9 @@ La distribution des routes sur E01–E15 est conforme à la conception : 5 `rag`
 
 ### Choix du mode hybride
 
-Les deux variantes ne diffèrent que sur les questions `hybrid` (E05 et E06 dans le jeu figé) : `sql_only` rédige à partir du seul chiffre SQL ; `sql_with_rag_context` ajoute quelques extraits FAISS pour la couche qualitative, avec une consigne explicite : les chiffres SQL font foi.
+Les deux variantes ne changent que les questions `hybrid` : `sql_only` rédige à partir du seul chiffre SQL ; `sql_with_rag_context` ajoute quelques extraits FAISS pour la partie qualitative, avec une consigne explicite : les chiffres SQL font foi.
 
-Des runs répétés (3 runs `sql_only`, 2 runs `sql_with_rag_context`) montrent que l'écart entre les deux est un **artefact de la variance du juge**, pas une différence réelle :
-
-| Mode hybride | faithfulness moyenne (E05–E06) | variance run à run |
-|---|---|---|
-| `sql_only` | 0,19 (3 runs) | E05 : 0,14 / 0,24 / 0,33 |
-| `sql_with_rag_context` | 0,22 (2 runs) | E05 : 0,19 / 0,44 |
-
-L'écart résiduel (+0,03) est plus petit que les oscillations du juge sur une même question d'un run à l'autre. Les deux modes sont donc **statistiquement indistinguables** sur la fidélité.
-
-**Choix retenu : `sql_only` par défaut.** À fidélité équivalente, c'est le mode le plus stable, le moins coûteux et le plus facile à expliquer. Le chiffre SQL reste la source de vérité, et aucun contexte texte supplémentaire n'est ajouté quand son apport n'est pas mesurable. Le mode `sql_with_rag_context` reste disponible par configuration (`HYBRID_MODE=sql_with_rag_context`), mais il n'est pas activé par défaut.
+Les écarts observés restent limités par rapport au bruit du juge RAGAS. Le mode `sql_only` est donc retenu par défaut : il est plus simple, plus stable et moins coûteux. Le mode `sql_with_rag_context` reste disponible par configuration (`HYBRID_MODE=sql_with_rag_context`) pour les cas où l'on veut enrichir l'interprétation avec des contextes texte.
 
 ### Mode expérimental : SQL généré par le LLM
 
@@ -490,6 +480,26 @@ On observe qu'après correction du format des réponses, l'affichage d'un top 5 
 
 **Métriques complémentaires.** Deux mesures optionnelles ont été ajoutées en lecture complémentaire. `answer_correctness` reste modérée (≈ 0,50 pour les deux modes) : les refus et les limites de données sont difficiles à noter avec une réponse de référence classique. `aspect_critic` vaut 1,0 pour les deux modes, ce qui indique que les réponses respectent les limites des données — aucune statistique absente n'est inventée. Le détail figure dans `notebooks/sql_modes_analysis.ipynb`.
 
+### Figures de synthèse (preuves visuelles)
+
+Les figures ci-dessous consolident les résultats discutés plus haut. Elles sont régénérées **sans appel API** à partir de `evaluation/results/` (`poetry run python scripts/make_report_figures.py`) : les scores globaux et les gains viennent du run canonique, la route SQL de la **moyenne ± écart-type sur 5 runs**. Les petits écarts avec les tableaux ci-dessus relèvent de la variance du juge entre runs.
+
+**Scores globaux par mode** — repère d'ensemble (baseline RAG → SQL contrôlé → hybride → LLM→SQL). À compléter par les analyses par route et par type : le jeu figé ne compte que 6 questions chiffrées sur 15.
+
+![Scores RAGAS globaux par mode](img/ragas_global_scores.png)
+
+**Gains vs baseline RAG, hors hors-sujet** — l'apport du SQL par métrique. Le gain de fidélité et de contexte est net, concentré sur les questions chiffrées et bruitées (détail par catégorie dans le notebook).
+
+![Gains RAGAS vs baseline RAG, hors hors-sujet](img/ragas_gains_vs_baseline.png)
+
+**Route SQL — contrôlé vs LLM→SQL (moyenne ± écart-type, 5 runs)** — le duel central. `llm_sql` atteint la parité en `faithfulness` ; le contrôlé est plus stable (écart-type ≈ 0) et reste le mode par défaut.
+
+![Route SQL — contrôlé vs LLM→SQL, 5 runs](img/ragas_sql_route_x5.png)
+
+**Métriques complémentaires** — `aspect_critic` = 1,0 pour les deux modes (aucune statistique absente inventée) ; `answer_correctness` reste modérée (≈ 0,50), à lire avec prudence.
+
+![Métriques complémentaires — answer_correctness et aspect_critic](img/ragas_extra_metrics.png)
+
 ### Limites du routage actuel
 
 - routage par règles : robuste sur le jeu testé, mais une question très déformée peut être mal classée (E12 reste en `rag`) ;
@@ -512,6 +522,8 @@ RAG v2 — contrôlé renforce le pipeline avec Pydantic, Pydantic AI et Logfire
 RAG v3 — hybride SQL utilise un routage en quatre chemins : RAG texte pour le documentaire, requêtes SQL prédéfinies pour le chiffré, réponse hybride pour les questions mixtes, refus hors périmètre. Sur le jeu figé E01–E15, le routage fait passer la `faithfulness` moyenne de 0,37 à 0,47–0,48 et la pertinence des réponses de 0,44 à 0,61–0,67, avec des gains concentrés exactement là où le RAG seul échouait : questions chiffrées et questions bruitées à intention chiffrée.
 
 Sur les questions chiffrées, le SQL améliore donc nettement le RAG seul. Le mode `llm_sql` couvre aussi le cas SQL généré par le modèle — le LLM génère la requête, mais l'exécution reste sécurisée en lecture seule — et atteint la parité avec le contrôlé sur la route SQL après l'ajout des exemples few-shot. Le mode contrôlé est conservé par défaut : plus stable, déterministe et plus simple à auditer. Dans tous les cas, les limites des données sont signalées plutôt que comblées par des chiffres inventés (`aspect_critic` = 1,0 pour les deux modes).
+
+Une variante de prompt plus strict est aussi disponible (`RAG_PROMPT_MODE=strict`). Elle améliore l'ancrage des réponses, mais réduit la pertinence sur les questions de discussion. Le prompt prototype reste donc le défaut, et le prompt strict reste activable par configuration.
 
 ### Prochaine étape
 
