@@ -51,7 +51,7 @@ import logfire
 
 from utils.config import (
     MISTRAL_API_KEY, MODEL_NAME, EMBEDDING_MODEL, HYBRID_MODE, SQL_GENERATION_MODE,
-    FAISS_INDEX_FILE, DOCUMENT_CHUNKS_FILE,
+    RAG_PROMPT_MODE, FAISS_INDEX_FILE, DOCUMENT_CHUNKS_FILE,
 )
 from utils.ragas_config import (
     EVALUATION_DATASET_FILE, EVALUATION_RESULTS_DIR, RAGAS_DATASET_PATH,
@@ -258,6 +258,18 @@ def extra_metrics_label_suffix(extra_metrics):
     return "_with_" + "_".join(parts)
 
 
+def prompt_mode_label_suffix(prompt_mode):
+    """Suffixe de label selon le mode de prompt RAG (vide pour le défaut « prototype »).
+
+    Ex. "prototype" (ou None) -> "" : on n'écrase JAMAIS les résultats existants ;
+        "strict"               -> "_prompt_strict".
+    Permet de comparer un prompt non-défaut dans des fichiers distincts.
+    """
+    if not prompt_mode or prompt_mode == "prototype":
+        return ""
+    return f"_prompt_{prompt_mode}"
+
+
 def _build_extra_metric(key, llm):
     """Construit l'instance d'une métrique extra, ou None si indisponible dans cette RAGAS.
 
@@ -392,6 +404,7 @@ def summarize_ragas_results(merged, eval_label, metric_columns, extra_metrics=()
         "model": MODEL_NAME,
         "sql_generation_mode": SQL_GENERATION_MODE,
         "hybrid_mode": HYBRID_MODE,
+        "rag_prompt_mode": RAG_PROMPT_MODE,
         "judge_model": RAGAS_JUDGE_MODEL,
         "embedding_model": EMBEDDING_MODEL,
         "ragas_version": ragas.__version__,
@@ -464,6 +477,9 @@ def main():
     # Le label inclut le mode de génération SQL (controlled/llm) ET le mode hybride :
     # chaque condition écrit donc des fichiers distincts, sans écraser les précédents.
     label = "baseline_rag" if args.eval_mode == "baseline_rag" else f"routed_{SQL_GENERATION_MODE}_{HYBRID_MODE}"
+    # Mode de prompt RAG non-défaut (strict) -> suffixe _prompt_<mode> : on compare le
+    # prompt strict SANS écraser les résultats du prompt prototype (suffixe vide par défaut).
+    label += prompt_mode_label_suffix(RAG_PROMPT_MODE)
     # Jeu non figé (ex. extended) -> suffixe dataset : on ne touche pas aux fichiers du jeu figé.
     if RAGAS_DATASET_PATH:
         dataset_stem = os.path.splitext(os.path.basename(EVALUATION_DATASET_FILE))[0]
@@ -473,7 +489,10 @@ def main():
     label += extra_metrics_label_suffix(extra_metrics)
 
     print(f"=== Évaluation RAGAS — assistant RAG NBA (condition : {label}) ===")
-    print(f"Modes : SQL_GENERATION_MODE={SQL_GENERATION_MODE} | HYBRID_MODE={HYBRID_MODE}")
+    print(
+        f"Modes : SQL_GENERATION_MODE={SQL_GENERATION_MODE} | HYBRID_MODE={HYBRID_MODE} "
+        f"| RAG_PROMPT_MODE={RAG_PROMPT_MODE}"
+    )
     print(f"Dataset : {EVALUATION_DATASET_FILE}")
     print("Métriques : 4 historiques" + (f" + extra {extra_metrics}" if extra_metrics else " (aucune extra)"))
     configure_logfire()  # observabilité optionnelle (Logfire) ; non bloquante sans token
