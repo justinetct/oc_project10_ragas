@@ -29,7 +29,7 @@ from utils.router import (
     classify_question,
     summarize_rag_sources,
 )
-from utils.sql.nba_intents import NOT_SUPPORTED_MESSAGE
+from utils.sql.nba_intents import NOT_SUPPORTED_MESSAGE, find_player_name
 
 
 @pytest.fixture(scope="module")
@@ -114,19 +114,23 @@ class _FailingManager:
 # --- Classification (sans base, sans API) -------------------------------------
 
 def test_documentary_question_is_routed_to_rag():
+    """Une question d'avis/discussion (Reddit) est routée vers RAG (texte)."""
     assert classify_question("Que disent les fans Reddit sur le play-in ?") == "rag"
 
 
 def test_numeric_question_is_routed_to_sql():
+    """Une question chiffrée (le plus de points) est routée vers SQL."""
     assert classify_question("Quel joueur a marqué le plus de points ?") == "sql"
 
 
 def test_mixed_question_is_routed_to_hybrid():
+    """Une question qui mêle un chiffre et une analyse est routée vers l'hybride."""
     question = "Quel joueur a délivré le plus de passes décisives, et qu'est-ce que cela révèle de son rôle ?"
     assert classify_question(question) == "hybrid"
 
 
 def test_off_topic_question_is_out_of_scope():
+    """Une question hors NBA (recette, football) est classée hors périmètre."""
     assert classify_question("Quelle est la recette de la ratatouille ?") == "out_of_scope"
     assert classify_question("Donne-moi le score du match de football PSG - OM.") == "out_of_scope"
 
@@ -134,6 +138,7 @@ def test_off_topic_question_is_out_of_scope():
 # --- Route SQL : valeurs de référence (sans API) ------------------------------
 
 def test_top_scorer_returns_sga(sql_db):
+    """Le meilleur marqueur de la base de test est bien SGA (2485 points)."""
     result = answer_question("Quel joueur a marqué le plus de points ?", manager=None)
     assert result.route == "sql"
     assert "Shai Gilgeous-Alexander" in result.answer
@@ -141,6 +146,7 @@ def test_top_scorer_returns_sga(sql_db):
 
 
 def test_best_three_point_pct_returns_seth_curry_with_volume_filter(sql_db):
+    """Le meilleur 3P% est Seth Curry ; un joueur à 100 % sur 1 seul tir est exclu (filtre de volume)."""
     result = answer_question("Qui a le meilleur pourcentage à 3 points cette saison ?", manager=None)
     assert result.route == "sql"
     assert "Seth Curry" in result.answer
@@ -149,6 +155,7 @@ def test_best_three_point_pct_returns_seth_curry_with_volume_filter(sql_db):
 
 
 def test_top_assists_blocks_oldest(sql_db):
+    """Trois classements simples : passes (Trae Young), contres (Wembanyama), joueur le plus âgé (LeBron)."""
     assists = answer_question("Quel joueur a délivré le plus de passes décisives ?", manager=None)
     assert "Trae Young" in assists.answer
     blocks = answer_question("Quel joueur a contré le plus de tirs ?", manager=None)
@@ -172,16 +179,60 @@ def test_youngest_player_returns_wembanyama(sql_db):
     assert "Victor Wembanyama" in result.answer  # 21 ans = le plus jeune
 
 
-def test_last_games_question_is_not_a_ranking(sql_db):
-    """« 5 derniers matchs » ne doit PAS déclencher un classement (cas non couvert)."""
+def test_recent_games_question_falls_back_to_season(sql_db):
+    """« 5 derniers matchs » : pas de chiffre inventé, mais un repli HONNÊTE sur la saison.
+
+    On signale l'absence de données match par match, puis on donne le total de rebonds par
+    équipe sur la saison (données réelles)."""
     result = answer_question(
         "Compare les rebonds des équipes sur leurs 5 derniers matchs.", manager=None
     )
     assert result.route == "sql"
-    assert result.answer == NOT_SUPPORTED_MESSAGE
+    assert result.answer != NOT_SUPPORTED_MESSAGE
+    assert "match par match" in result.answer            # l'absence de granularité est signalée
+    assert "rebonds" in result.answer.lower()
+    assert "San Antonio Spurs" in result.answer          # repli saison réel (700 = max de la base test)
+    assert result.retrieved_contexts                     # contextes = lignes SQL réelles
+
+
+def test_home_away_question_falls_back_to_season(sql_db):
+    """E11 (énoncé) : domicile/extérieur indisponible -> repli saison honnête, pas de refus sec."""
+    result = answer_question(
+        "Compare les rebonds à domicile et à l'extérieur des équipes sur leurs 5 derniers matchs.",
+        manager=None,
+    )
+    assert result.route == "sql"
+    assert result.answer != NOT_SUPPORTED_MESSAGE
+    assert "match par match" in result.answer
+    assert "domicile" in result.answer.lower()
+    assert result.retrieved_contexts
+
+
+def test_named_player_with_granularity_keeps_fiche_not_fallback(sql_db):
+    """Fiche d'un joueur nommé + « 5 derniers matchs » : le repli NE préempte PAS la fiche.
+
+    Le cas spécifique (fiche joueur) gagne et répond sur la saison, plutôt qu'un agrégat
+    par équipe qui ne mentionnerait même pas le joueur demandé."""
+    result = answer_question(
+        "Quels sont les points de LeBron James sur ses 5 derniers matchs ?", manager=None
+    )
+    assert result.route == "sql"
+    assert "LeBron James" in result.answer        # la fiche du joueur, pas l'agrégat équipe
+    assert "match par match" not in result.answer  # le repli n'a pas été déclenché
+
+
+def test_player_ranking_with_granularity_keeps_ranking_not_fallback(sql_db):
+    """Classement de joueurs + « 5 derniers matchs » : le classement (saison) gagne sur le repli."""
+    result = answer_question(
+        "Quel joueur a capté le plus de rebonds sur ses 5 derniers matchs ?", manager=None
+    )
+    assert result.route == "sql"
+    assert "Victor Wembanyama" in result.answer    # 700 rebonds = max de la base test
+    assert "match par match" not in result.answer
 
 
 def test_named_player_stats(sql_db):
+    """La fiche d'un joueur nommé renvoie ses chiffres (SGA, 2485 points)."""
     result = answer_question(
         "Quelles sont les statistiques de Shai Gilgeous-Alexander : points, rebonds, passes ?",
         manager=None,
@@ -201,6 +252,7 @@ def test_uncovered_numeric_is_declined_without_dangerous_sql(sql_db):
 
 
 def test_out_of_scope_returns_refusal_without_manager(sql_db):
+    """Une question hors périmètre est refusée poliment, sans utiliser FAISS (un manager qui échoue ne gêne pas)."""
     result = answer_question("Quelle est la recette de la ratatouille ?", manager=_FailingManager())
     assert result.route == "out_of_scope"
     assert result.answer == OUT_OF_SCOPE_MESSAGE
@@ -211,6 +263,64 @@ def test_sql_route_never_calls_faiss_or_llm(sql_db):
     result = answer_question("Quel joueur a marqué le plus de points ?", manager=_FailingManager())
     assert result.route == "sql"
     assert "Shai Gilgeous-Alexander" in result.answer
+
+
+# --- Homonymes de nom de famille : un nom COMPLET l'emporte (régression) -------
+
+
+@pytest.fixture
+def homonym_db(tmp_path, monkeypatch):
+    """Base temporaire avec PLUSIEURS joueurs partageant le nom de famille « James ».
+
+    Reproduit la vraie base : `player_name` est UNIQUE (index auto), donc les lignes
+    reviennent triées alphabétiquement -> « Bronny James » est parcouru avant « LeBron
+    James ». Sert à vérifier que `find_player_name` ne se laisse pas piéger par cet ordre.
+    """
+    path = str(tmp_path / "homonyms.sqlite")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE players (
+            player_id   INTEGER PRIMARY KEY,
+            player_name TEXT NOT NULL UNIQUE,
+            team_code   TEXT,
+            age         INTEGER
+        );
+        """
+    )
+    # Inséré avec « Bronny James » AVANT « LeBron James » : que SQLite renvoie les lignes
+    # par rowid ou via l'index unique (ordre alphabétique), Bronny est parcouru en premier
+    # -> reproduit le piège que l'ancien parcours en une passe ne savait pas éviter.
+    conn.executemany(
+        "INSERT INTO players (player_name) VALUES (?)",
+        [("Bronny James",), ("James Harden",), ("James Johnson",),
+         ("James Wiseman",), ("LeBron James",)],
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(sql_tool, "DB_FILE", path)
+    return path
+
+
+def test_full_name_wins_over_earlier_surname_homonym(homonym_db):
+    """« LeBron James » doit gagner, même si « Bronny James » (même nom) est parcouru avant.
+
+    Régression : l'ancien parcours en une passe renvoyait « Bronny James » (match sur le
+    nom de famille « james ») avant d'atteindre le match EXACT du nom complet de LeBron."""
+    assert find_player_name("Quels sont les points de LeBron James cette saison ?") == "LeBron James"
+    # Symétrique : « Bronny James » cité explicitement résout bien vers Bronny, pas LeBron.
+    assert find_player_name("Et les stats de Bronny James ?") == "Bronny James"
+
+
+def test_ambiguous_bare_surname_does_not_silently_resolve(homonym_db):
+    """Un nom de famille AMBIGU (« James ») ne doit pas résoudre vers un James arbitraire."""
+    assert find_player_name("Donne-moi les stats de James.") is None
+
+
+def test_unique_surname_still_resolves(homonym_db):
+    """Un nom de famille NON ambigu (un seul porteur) reste résolu par le repli."""
+    assert find_player_name("Les chiffres de Wiseman ?") == "James Wiseman"
+    assert find_player_name("Et Harden ?") == "James Harden"
 
 
 # --- Métadonnées d'affichage : sources + notice (sans API) --------------------

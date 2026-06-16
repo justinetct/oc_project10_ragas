@@ -30,6 +30,7 @@ Versions repères :
   - [Baseline RAGAS et versions repères](#baseline-ragas-et-versions-repères)
 - [Observabilité](#observabilité)
 - [SQL Tool LangChain (lecture seule)](#sql-tool-langchain-lecture-seule)
+- [Mode expérimental : SQL généré par le LLM](#mode-expérimental--sql-généré-par-le-llm)
 
 ## Structure du dépôt
 
@@ -38,11 +39,11 @@ Versions repères :
 ├── docs/
 │   ├── audit_initial.md         # Synthèse de l'audit initial
 │   ├── final_report.md          # Rapport de mise en place et d'évaluation
-│   ├── routing.md               # Détail du routage RAG / SQL
 │   └── img/                     # Captures utilisées dans le rapport
 ├── evaluation/
-│   ├── evaluation_questions.csv # Jeu figé E01-E15 (comparaison officielle)
-│   └── results/                 # Résultats RAGAS (par condition)
+│   ├── evaluation_questions.csv              # Jeu figé E01-E15 (comparaison officielle)
+│   ├── evaluation_questions_sql_extended.csv # Jeu étendu de questions chiffrées (analyse SQL)
+│   └── results/                 # Résultats RAGAS (par condition + runs de variance)
 ├── inputs/                      # Documents sources
 │   ├── Reddit 1.pdf
 │   ├── Reddit 2.pdf
@@ -50,20 +51,32 @@ Versions repères :
 │   ├── Reddit 4.pdf
 │   └── regular NBA.xlsx
 ├── notebooks/
-│   ├── audit.ipynb              # Notebook d'audit initial
-│   └── ragas_baseline_results.ipynb  # Illustration de la baseline RAGAS
+│   ├── audit.ipynb                  # Notebook d'audit initial
+│   ├── ragas_baseline_results.ipynb # Illustration de la baseline RAGAS
+│   └── sql_modes_analysis.ipynb     # Comparaison des modes SQL (contrôlé / hybride / LLM)
 ├── scripts/
-│   ├── evaluate_ragas.py        # Évaluation RAGAS (pipeline routé ou baseline RAG)
-│   └── load_excel_to_db.py      # Construit la base SQLite NBA depuis l'Excel
-├── tests/                       # Tests qualité et validation
+│   ├── evaluate_ragas.py              # Évaluation RAGAS (pipeline routé ou baseline RAG)
+│   ├── compare_ragas_runs.py         # Compare les résumés RAGAS de plusieurs conditions
+│   ├── aggregate_variance_runs.py    # Moyenne ± écart-type sur plusieurs runs (juge bruité)
+│   ├── compare_sql_modes_extended.py # Compare contrôlé vs LLM→SQL sur le jeu étendu (sans RAGAS)
+│   ├── analyze_llm_sql_generation.py # Trace les requêtes générées par le LLM (sans RAGAS)
+│   ├── run_all_ragas.sh              # Lance tous les runs (variance ×5 + passes extra)
+│   └── load_excel_to_db.py           # Construit la base SQLite NBA depuis l'Excel
+├── tests/                       # Tests qualité et validation (sans appel API)
 ├── utils/
-│   ├── config.py                # Configuration des chemins et variables d'environnement
+│   ├── config.py                # Configuration app / RAG / SQL / Logfire
+│   ├── ragas_config.py          # Configuration dédiée à l'évaluation RAGAS
+│   ├── results_io.py            # Lecture des résultats d'évaluation (notebook + tests)
 │   ├── data_loader.py           # Chargement OCR / Excel / documents
 │   ├── observability.py         # Configuration optionnelle de Logfire
 │   ├── rag_agent.py             # Agent Pydantic AI : génération de la réponse à sortie typée
 │   ├── router.py                # Routage RAG / SQL / hybride / hors-sujet
 │   ├── schemas.py               # Modèles Pydantic (validation du pipeline RAG)
-│   ├── sql/                     # Base SQLite NBA : modèles, chargement Excel, requêtes, mapping
+│   ├── sql/                     # Base SQLite NBA + SQL Tool + mode LLM→SQL
+│   │   ├── nba_intents.py           # Mapping question → SQL contrôlé (liste blanche)
+│   │   ├── sql_tool.py              # SQL Tool LangChain en lecture seule
+│   │   ├── llm_sql_generator.py     # Mode expérimental : le LLM propose une requête SQL
+│   │   └── llm_sql_pipeline.py      # Valide puis exécute la requête générée (lecture seule)
 │   ├── text.py                  # Normalisation et détection de mots-clés (routage)
 │   └── vector_store.py          # Création et interrogation de l'index FAISS
 ├── .env.example                 # Exemple de configuration sans clé réelle
@@ -120,20 +133,14 @@ poetry run ruff check .
 poetry run pytest
 ```
 
-Les tests du dossier `tests/` sont légers : ils vérifient la configuration, la présence des fichiers d'entrée, la structure du dataset d'évaluation, l'import des modules sans effet de bord et quelques comportements de non-régression du vector store. Ils ne déclenchent **aucun** appel à l'API Mistral, ni l'OCR, ni la reconstruction de l'index FAISS.
+Les tests du dossier `tests/` sont légers et ne déclenchent **aucun** appel à l'API Mistral, ni l'OCR, ni la reconstruction de l'index FAISS. Ils couvrent la configuration, le routage RAG / SQL / hybride, la sécurité du SQL Tool en lecture seule, le mode expérimental LLM→SQL, la validation Pydantic et la lecture des résultats RAGAS.
 
-Tests actuellement présents :
+Pour voir la liste à jour et tout exécuter :
 
-- `test_config.py` — configuration et chemins principaux ;
-- `test_inputs.py` — présence des documents sources ;
-- `test_imports.py` — imports sans appel API ni OCR ;
-- `test_vector_store.py` — comportements clés du vector store ;
-- `test_schemas.py` — validation Pydantic des objets du pipeline RAG ;
-- `test_observability.py` — configuration Logfire optionnelle ;
-- `test_evaluation_dataset.py` — structure du dataset d'évaluation ;
-- `test_rag_agent.py` — agent Pydantic AI : import, construction du contexte, sortie typée.
-- `test_sql_tool.py` — sécurité du SQL Tool en lecture seule ;
-- `test_router.py` — routage RAG / SQL / hybride / hors-sujet, sans appel API.
+```bash
+ls tests/            # liste des fichiers de tests
+poetry run pytest -q # exécution (sans API)
+```
 
 ## Commandes utiles
 
@@ -189,7 +196,7 @@ Dans **RAG v3 — hybride SQL**, le routeur choisit le traitement selon la quest
 - **Hybride** pour les questions mixtes : le chiffre est récupéré par SQL (fait vérifié), puis la réponse est rédigée par le LLM ;
 - **Hors périmètre** : refus poli pour les questions hors NBA.
 
-L'orchestration est dans `utils/router.py`, le mapping question → SQL dans `utils/sql/nba_intents.py`. Le SQL n'est **jamais** écrit par le LLM : les requêtes sont contrôlées, construites depuis des intentions et des colonnes sur liste blanche, puis exécutées par le SQL Tool sécurisé. Pour le 3P%, un filtre de volume (≥ 100 tentatives) évite l'artefact d'un joueur à 100 % sur 1 tir. L'interface Streamlit affiche discrètement la route utilisée.
+L'orchestration est dans `utils/router.py`, le mapping question → SQL dans `utils/sql/nba_intents.py`. Par **défaut** (mode `controlled`), le SQL n'est **jamais écrit par le LLM** : les requêtes sont construites depuis des intentions et des colonnes sur liste blanche. Un mode **expérimental** (`SQL_GENERATION_MODE=llm`) laisse le LLM *proposer* la requête, mais **uniquement dans ce mode** — et dans tous les cas, l'exécution passe **toujours** par le SQL Tool sécurisé en **lecture seule** (voir la section dédiée plus bas). Pour le 3P%, un filtre de volume (≥ 100 tentatives) évite l'artefact d'un joueur à 100 % sur 1 tir. L'interface Streamlit affiche discrètement la route utilisée.
 
 Préalable aux routes SQL / hybride — construire la base SQLite :
 
@@ -221,6 +228,8 @@ Les limites principales sont les suivantes : OCR parfois bruité, Excel indexé 
 Le fichier `evaluation/evaluation_questions.csv` contient le jeu **figé E01–E15**, identique depuis la baseline : c'est le seul jeu de la comparaison officielle v1 → v2 → v3. Il couvre les cas simples, complexes, chiffrés, mixtes, bruités et hors sujet.
 
 *Le jeu figé E01–E15 ne doit plus être modifié une fois la baseline calculée.*
+
+Un **jeu étendu séparé**, `evaluation/evaluation_questions_sql_extended.csv` (~47 questions chiffrées), sert uniquement à analyser plus finement les modes SQL. Il **ne remplace pas** le jeu figé et ne sert pas à la comparaison officielle.
 
 La méthodologie d'évaluation repose sur RAGAS, avec un juge LLM et quatre métriques : `faithfulness`, `answer_relevancy`, `context_precision` et `context_recall`.
 
@@ -287,6 +296,19 @@ L'expérience montre une hausse de la `faithfulness` moyenne avec Pydantic AI, a
 
 Cette comparaison sert à vérifier que l'évolution du pipeline ne repose pas sur un seul run isolé.
 
+### Comparaison des modes SQL (RAG v3)
+
+Trois conditions sont comparées sur les questions chiffrées : `controlled_sql`, `controlled_hybrid` et `llm_sql`. Comme le juge RAGAS est lui-même un LLM (résultats bruités), chaque condition est lancée **5 fois** : `scripts/run_all_ragas.sh` enchaîne les runs, et `scripts/aggregate_variance_runs.py` calcule la **moyenne ± écart-type**.
+
+Des métriques **supplémentaires optionnelles** (désactivées par défaut) peuvent être activées via `RAGAS_EXTRA_METRICS` :
+
+```bash
+# answer_correctness (justesse vs réponse de référence) et aspect_critic (respect des limites des données)
+RAGAS_EXTRA_METRICS=answer_correctness,aspect_critic poetry run python scripts/evaluate_ragas.py --eval-mode routed
+```
+
+Le notebook `notebooks/sql_modes_analysis.ipynb` lit tous ces résultats (sans relancer l'API) et présente la comparaison par route et par type de question.
+
 
 ## Observabilité
 
@@ -310,4 +332,36 @@ Pour **RAG v3 — hybride SQL**, le projet fournit un SQL Tool LangChain en lect
 - Il interroge la base SQLite locale `data/nba.sqlite`, générée par `poetry run python scripts/load_excel_to_db.py`.
 - Il n'accepte que des requêtes `SELECT` : mots-clés d'écriture refusés, une seule requête à la fois, nombre de lignes plafonné, connexion ouverte en lecture seule.
 - Il complète le RAG texte sans le remplacer : FAISS reste utilisé pour les documents (Reddit/PDF), tandis que SQLite répond aux questions chiffrées.
-  
+
+## Mode expérimental : SQL généré par le LLM
+
+En complément du mode contrôlé, un mode **expérimental** permet de tester l'approche « SQL généré par le LLM » demandée dans le cadrage, **sans casser le mode actuel**. Il sert uniquement à comparer trois conditions sur les questions chiffrées :
+
+1. **`controlled_sql`** — mode actuel : intentions + requêtes SQL contrôlées (`utils/sql/nba_intents.py`) ;
+2. **`controlled_hybrid`** — mode actuel hybride : chiffre SQL contrôlé + rédaction LLM ;
+3. **`llm_sql`** — le LLM génère une requête SQL à partir de la question, puis cette requête passe par le **SQL Tool sécurisé** existant.
+
+Le choix se fait par configuration, le défaut restant le mode contrôlé :
+
+```env
+SQL_GENERATION_MODE=controlled   # défaut : mode de production, inchangé
+SQL_GENERATION_MODE=llm          # expérimental : SQL généré par le LLM
+```
+
+Garde-fous (non négociables) :
+
+- le **LLM n'exécute jamais** de SQL : il propose seulement un texte de requête (`utils/sql/llm_sql_generator.py`), avec une sortie structurée validée par Pydantic (`should_query`, `sql`, `reason`, `expected_result_type`) ;
+- toute requête générée est **revalidée** (lecture seule : `SELECT`/`WITH` uniquement, une seule requête, mots-clés d'écriture interdits) puis **exécutée par le SQL Tool sécurisé** en lecture seule (`mode=ro`) — aucune écriture en base n'est possible ;
+- une **limite de lignes** est imposée à l'exécution, même si le LLM l'oublie ;
+- si la question n'est pas couverte par le schéma (donnée absente, hors NBA, ambiguë), le LLM répond `should_query=false` et l'assistant refuse honnêtement.
+
+Pour **analyser les requêtes générées** (et non les scores RAGAS), un script dédié exécute le pipeline LLM→SQL sur un panel de questions variées (simples, classements, stats joueur, totaux équipe, non supportées, hors NBA, ambiguës, dangereuses) et trace pour chacune la requête, sa validation, son exécution et un aperçu du résultat :
+
+```bash
+SQL_GENERATION_MODE=llm poetry run python scripts/analyze_llm_sql_generation.py
+```
+
+Résultats écrits dans `evaluation/results/` : `llm_sql_generation_analysis.csv` et `llm_sql_generation_analysis.json`.
+
+La comparaison RAGAS des trois conditions reste possible via le même pipeline (`scripts/evaluate_ragas.py`), en activant `SQL_GENERATION_MODE=llm`, mais n'est pas lancée automatiquement (coût API).
+

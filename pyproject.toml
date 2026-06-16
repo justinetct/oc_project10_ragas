@@ -65,16 +65,24 @@ ignore = ["E501"]  # longueur de ligne tolérée sur ce prototype
 # scripts/evaluate_ragas.py fixe KMP_DUPLICATE_LIB_OK (faiss/macOS), le sys.path et
 # filtre un warning de dépréciation RAGAS AVANT d'importer faiss/ragas : E402 toléré.
 "scripts/evaluate_ragas.py" = ["E402"]
+# scripts/analyze_llm_sql_generation.py fixe KMP_DUPLICATE_LIB_OK et le sys.path avant
+# ses imports (lancement direct du script) : E402 toléré, comme l'évaluation RAGAS.
+"scripts/analyze_llm_sql_generation.py" = ["E402"]
+# scripts/compare_sql_modes_extended.py : même motif (sys.path avant imports).
+"scripts/compare_sql_modes_extended.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 # On masque trois DeprecationWarning internes à OpenTelemetry (dépendance
 # transitive de Logfire) : elles concernent du code tiers, pas le nôtre.
+# On masque aussi l'avertissement RAGAS sur le chemin d'import des métriques
+# (ragas.metrics -> ragas.metrics.collections en v1.0) : on est épinglé en 0.4.x.
 filterwarnings = [
     "ignore:You should use `Logger` instead:DeprecationWarning",
     "ignore:You should use `LoggerProvider` instead:DeprecationWarning",
     "ignore:You should use `ProxyLoggerProvider` instead:DeprecationWarning",
+    "ignore:Importing .* from 'ragas.metrics' is deprecated:DeprecationWarning",
 ]
 
 [build-system]

@@ -24,6 +24,7 @@
    - [Routage intégré](#routage-intégré--lassistant-choisit-son-chemin)
    - [Résultats du routage](#résultats--avant--après-routage)
    - [Choix du mode hybride](#choix-du-mode-hybride)
+   - [Mode expérimental : SQL généré par le LLM](#mode-expérimental--sql-généré-par-le-llm)
 8. [Conclusion](#8-conclusion)
 - [Annexe — exemples de requêtes SQL](#annexe--exemples-de-requêtes-sql)
 
@@ -404,13 +405,13 @@ exécuter via le SQL Tool
 formater la réponse en français
 ```
 
-Ce découpage rend le comportement transparent sans ouvrir de génération SQL libre. Les colonnes autorisées viennent d'une liste blanche, le sens du tri est limité à deux constantes internes (`ASC` ou `DESC`), et les noms de joueurs passent en paramètres SQL. Le SQL Tool en lecture seule reste l'unique couche d'exécution.
+Ce découpage rend le comportement déterministe et facile à suivre : c'est le mode par défaut (`controlled`). Les colonnes autorisées viennent d'une liste blanche, le sens du tri est limité à deux constantes internes (`ASC` ou `DESC`), et les noms de joueurs passent en paramètres SQL. Un second mode, expérimental (`llm_sql`), laisse le LLM écrire la requête (voir plus bas) ; dans les deux cas, le SQL Tool en lecture seule reste l'unique couche d'exécution.
 
 Une question chiffrée hors couverture reçoit une réponse honnête « non pris en charge » plutôt qu'un résultat inventé.
 
 L'application (`MistralChat.py`) et l'évaluation (`scripts/evaluate_ragas.py`) passent par la même fonction `answer_question()`. L'évaluation mesure donc exactement le même chemin que celui utilisé par l'interface.
 
-L'évaluation officielle porte sur le jeu figé E01–E15, inchangé depuis la baseline. Un petit jeu étendu E16–E20 a aussi été créé pour tester plus spécifiquement le routage et les modes hybrides, mais il est analysé séparément.
+L'évaluation officielle porte sur le jeu figé E01–E15, inchangé depuis la baseline. Un jeu étendu de questions chiffrées (`evaluation/evaluation_questions_sql_extended.csv`, ~47 questions) sert à analyser plus finement les modes SQL ; il est étudié à part et ne remplace pas le jeu figé.
 
 ### Résultats : avant / après routage
 
@@ -450,11 +451,51 @@ L'écart résiduel (+0,03) est plus petit que les oscillations du juge sur une m
 
 **Choix retenu : `sql_only` par défaut.** À fidélité équivalente, c'est le mode le plus stable, le moins coûteux et le plus facile à expliquer. Le chiffre SQL reste la source de vérité, et aucun contexte texte supplémentaire n'est ajouté quand son apport n'est pas mesurable. Le mode `sql_with_rag_context` reste disponible par configuration (`HYBRID_MODE=sql_with_rag_context`), mais il n'est pas activé par défaut.
 
+### Mode expérimental : SQL généré par le LLM
+
+Une variante avec génération de requêtes SQL par le LLM a été ajoutée. Un second mode (`SQL_GENERATION_MODE=llm`) le permet, sans remplacer le mode contrôlé :
+
+- le mode `controlled` reste déterministe (requêtes construites depuis une liste blanche) ;
+- dans le mode `llm_sql`, le LLM **génère** une requête SQL à partir de la question ;
+- cette requête est **validée** puis **exécutée par le SQL Tool en lecture seule**.
+
+**Sécurité — le LLM propose le SQL, le tool l'exécute après contrôle.** Concrètement :
+
+- le LLM produit seulement un texte de requête (`utils/sql/llm_sql_generator.py`) ;
+- la requête est validée par `assert_read_only` (SELECT/WITH uniquement, une seule instruction, mots-clés d'écriture refusés) ;
+- l'exécution passe par `sql_query_tool`, qui **revalide** la requête ;
+- la base SQLite est ouverte en `mode=ro` ;
+- le LLM n'a **aucun** accès direct à la base.
+
+**Few-shot.** Le prompt du générateur contient quelques exemples question → SQL attendu pour stabiliser les cas courants : les classements, le filtre 3P% avec au moins 100 tentatives, les filtres équipe + seuil, et les cas où la donnée n'existe pas (le modèle répond alors « pas de requête » plutôt que d'inventer).
+
+**Question E11 — rebonds domicile/extérieur sur 5 derniers matchs.** La base ne contient ni les matchs individuels, ni les 5 derniers matchs, ni le découpage domicile/extérieur : les statistiques sont agrégées sur la saison. L'assistant ne doit donc pas inventer cette comparaison. Il signale la limite et propose une alternative fondée sur les statistiques de saison (rebonds par équipe). Les deux modes adoptent ce comportement.
+
+#### Comparaison contrôlé / hybride / LLM→SQL
+
+Trois conditions sont comparées sur les questions chiffrées : `controlled_sql`, `controlled_hybrid` (chiffre SQL + contextes RAG sur les questions hybrides) et `llm_sql`. Le juge RAGAS étant bruité, chaque condition est lancée 5 fois (`scripts/run_all_ragas.sh`) puis moyennée (`scripts/aggregate_variance_runs.py`).
+
+Route SQL — moyenne ± écart-type sur 5 runs :
+
+| Métrique | SQL contrôlé | LLM→SQL |
+|---|---|---|
+| `faithfulness` | 0,860 ± 0,015 | 0,910 ± 0,028 |
+| `answer_relevancy` | 0,653 ± 0,001 | 0,630 ± 0,004 |
+| `context_precision` | 0,667 ± 0,000 | 0,667 ± 0,000 |
+| `context_recall` | 0,778 ± 0,000 | 0,711 ± 0,091 |
+
+On observe qu'après correction du format des réponses, l'affichage d'un top 5 et l'ajout des exemples few-shot, le mode `llm_sql` atteint la **parité** avec le SQL contrôlé sur la route SQL. Le SQL contrôlé reste plus **stable** (écart-type proche de 0) : il est donc conservé comme mode par défaut.
+
+`controlled_hybrid` ne modifie que les questions hybrides (ajout de contextes RAG). Les écarts avec `controlled_sql` restent limités ; `controlled_sql` est gardé comme référence par défaut, et `controlled_hybrid` reste disponible par configuration.
+
+**Métriques complémentaires.** Deux mesures optionnelles ont été ajoutées en lecture complémentaire. `answer_correctness` reste modérée (≈ 0,50 pour les deux modes) : les refus et les limites de données sont difficiles à noter avec une réponse de référence classique. `aspect_critic` vaut 1,0 pour les deux modes, ce qui indique que les réponses respectent les limites des données — aucune statistique absente n'est inventée. Le détail figure dans `notebooks/sql_modes_analysis.ipynb`.
+
 ### Limites du routage actuel
 
 - routage par règles : robuste sur le jeu testé, mais une question très déformée peut être mal classée (E12 reste en `rag`) ;
-- couverture SQL bornée aux requêtes prédéfinies : pas de NL→SQL libre, donc pas de réponse aux agrégats non prévus (ex. splits domicile/extérieur, absents de la base) — l'assistant le dit explicitement ;
+- en mode contrôlé (défaut), la couverture SQL est bornée aux requêtes prédéfinies ; le mode `llm_sql` couvre davantage de questions composées. Ce qui est absent de la base (ex. splits domicile/extérieur) reste signalé comme indisponible dans les deux modes ;
 - RAGAS juge mal deux familles de réponses correctes : les refus (hors-sujet, note 0 par construction) et les réponses interprétatives des questions mixtes ; le comparatif chiffré est donc complété d'une lecture qualitative des réponses, en particulier sur les questions mixtes.
+
 
 ---
 
@@ -470,9 +511,11 @@ RAG v2 — contrôlé renforce le pipeline avec Pydantic, Pydantic AI et Logfire
 
 RAG v3 — hybride SQL utilise un routage en quatre chemins : RAG texte pour le documentaire, requêtes SQL prédéfinies pour le chiffré, réponse hybride pour les questions mixtes, refus hors périmètre. Sur le jeu figé E01–E15, le routage fait passer la `faithfulness` moyenne de 0,37 à 0,47–0,48 et la pertinence des réponses de 0,44 à 0,61–0,67, avec des gains concentrés exactement là où le RAG seul échouait : questions chiffrées et questions bruitées à intention chiffrée.
 
+Sur les questions chiffrées, le SQL améliore donc nettement le RAG seul. Le mode `llm_sql` couvre aussi le cas SQL généré par le modèle — le LLM génère la requête, mais l'exécution reste sécurisée en lecture seule — et atteint la parité avec le contrôlé sur la route SQL après l'ajout des exemples few-shot. Le mode contrôlé est conservé par défaut : plus stable, déterministe et plus simple à auditer. Dans tous les cas, les limites des données sont signalées plutôt que comblées par des chiffres inventés (`aspect_critic` = 1,0 pour les deux modes).
+
 ### Prochaine étape
 
-Le choix par défaut du mode hybride est maintenant fixé à `sql_only`, après comparaison avec `sql_with_rag_context`. Les prochaines pistes seraient d'élargir la couverture des intentions chiffrées et de remplacer le routage par règles par un classifieur plus robuste si le besoin apparaît à l'usage, tout en conservant le principe de sécurité : pas de génération SQL libre.
+Le mode hybride par défaut est fixé à `sql_only`, et le mode `llm_sql` reste une option expérimentale activable par configuration. Les pistes suivantes seraient d'élargir la couverture des questions chiffrées et de remplacer le routage par règles par un classifieur plus robuste si le besoin apparaît à l'usage, en gardant le même principe de sécurité : toute requête, contrôlée ou générée, passe par le SQL Tool en lecture seule.
 
 > **Ce qui est exclu du périmètre**
 > - pas de fine-tuning du modèle ;
@@ -484,10 +527,9 @@ Le choix par défaut du mode hybride est maintenant fixé à `sql_only`, après 
 
 ### TODO avant version finale
 
-- [x] Implémenter la brique SQL (pipeline d'ingestion + SQL Tool en lecture seule) et compléter la section 7.
-- [x] Intégrer le routage RAG texte / SQL dans l'assistant.
-- [x] Ajouter le comparatif RAG seul vs RAG + SQL après évaluation.
-- [ ] Relecture finale : vérifier que chaque affirmation reste appuyée par les résultats.
+- [ ] Relecture finale du rapport.
+- [ ] Vérification des chiffres dans `evaluation/results/` et le notebook.
+- [ ] Nettoyage éventuel des fichiers temporaires de résultats.
 
 ---
 

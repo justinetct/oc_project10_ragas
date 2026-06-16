@@ -35,10 +35,27 @@ database/
 # Base SQLite NBA (reconstructible via scripts/load_excel_to_db.py)
 data/
 
-# RAGAS — résultats partiels (checkpoints de test rapide, non versionnés)
-evaluation/results/ragas_baseline_results_partial.csv
-evaluation/results/ragas_baseline_summary_partial.json
-evaluation/results/variance_runs/
+# RAGAS — résultats intermédiaires / archives NON versionnés (le notebook ne les lit pas)
+# Checkpoints de test rapide (baseline + routés)
+evaluation/results/*partial*
+# Snapshots horodatés d'une session de run
+evaluation/results/*.session_*
+# Logs de run
+evaluation/results/logs/
+# Analyse de génération SQL (sortie de analyze_llm_sql_generation.py, non lue par le notebook)
+evaluation/results/llm_sql_generation_analysis.*
+# Résumés des passes « extra metrics » : le notebook lit les *_with_correctness_aspect_results.csv
+evaluation/results/*_with_correctness_aspect_summary.json
+# CSV bruts des checkpoints d'évolution llm_sql (seuls les *_summary.<étape>.json servent)
+evaluation/results/*_results.before_*.csv
+evaluation/results/*_results.fewshot_incomplet.csv
+# CSV brut de la route hybride (le notebook lit le summary correspondant, pas le results)
+evaluation/results/ragas_routed_controlled_sql_with_rag_context_results.csv
+
+# variance_runs/ : on NE versionne PAS le brut (CSV par run, logs), mais on GARDE les
+# résumés ×5 (…_run*_summary.json) dont le notebook a besoin pour l'analyse de variance.
+evaluation/results/variance_runs/*
+!evaluation/results/variance_runs/*_run*_summary.json
 
 # Streamlit
 .streamlit/

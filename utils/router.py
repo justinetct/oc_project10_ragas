@@ -9,6 +9,12 @@ Choisit, par règles simples et explicables, le bon chemin :
 Ni la classification ni le SQL ne sont produits par le LLM : la classification est par
 mots-clés (`utils/text.py`), le SQL vient d'un mapping figé (`utils/sql/nba_intents.py`)
 exécuté en lecture seule. Le RAG texte est réutilisé tel quel (`utils/rag_agent.py`).
+
+Mode expérimental (désactivé par défaut) : si `SQL_GENERATION_MODE=llm`, la route SQL
+laisse le LLM générer la requête (`utils/sql/llm_sql_pipeline.py`) au lieu du mapping
+figé, pour comparer cette approche au mode contrôlé. La requête reste validée puis
+exécutée en lecture seule par le SQL Tool sécurisé ; le mode par défaut (`controlled`)
+est inchangé.
 """
 
 import logging
@@ -16,10 +22,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-from .config import HYBRID_MODE, HYBRID_RAG_K, SEARCH_K
+from .config import HYBRID_MODE, HYBRID_RAG_K, SEARCH_K, SQL_GENERATION_MODE
 from .rag_agent import generate_rag_answer
 from .schemas import RagAnswer
-from .sql.nba_intents import NOT_SUPPORTED_MESSAGE, answer_numeric_question
+from .sql.nba_intents import NOT_SUPPORTED_MESSAGE, answer_numeric_question, answer_season_fallback
 from .text import mentions, normalize
 
 # Sujets clairement hors périmètre (autres sports, cuisine, etc.).
@@ -89,6 +95,8 @@ SQL_SOURCE_LABEL = "Base SQLite NBA — table des statistiques"
 SQL_TOOL_LABEL = "Calcul via le SQL Tool (lecture seule)"
 SQL_VOLUME_FILTER_LABEL = "Filtre 3P% : minimum 100 tentatives"
 HYBRID_SQL_SOURCE_LABEL = "Chiffre vérifié : base SQLite NBA"
+# Mode expérimental LLM→SQL : provenance résumée (jamais le SQL brut).
+LLM_SQL_SOURCE_LABEL = "Requête SQL générée par le LLM, validée puis exécutée en lecture seule"
 
 # Notices courtes (la « limite / avertissement » affichée sous la réponse).
 RAG_NOTICE = "Réponse générée à partir des documents retrouvés."
@@ -197,7 +205,32 @@ def _answer_rag(question, manager):
 
 
 def _answer_sql(question):
-    """Route SQL : réponse chiffrée via le mapping prédéfini (aucun LLM)."""
+    """Route SQL : réponse chiffrée.
+
+    Par défaut (`SQL_GENERATION_MODE=controlled`) la requête vient du mapping prédéfini
+    (aucun LLM) — comportement de production inchangé. En mode expérimental
+    (`SQL_GENERATION_MODE=llm`, activable par configuration UNIQUEMENT), la requête est
+    générée par le LLM puis exécutée par le SQL Tool sécurisé (voir `_answer_sql_llm`).
+
+    Cas particulier traité AVANT le choix du mode : une question à granularité indisponible
+    (domicile/extérieur, matchs récents) reçoit une réponse honnête IDENTIQUE dans les deux
+    modes (on n'a que des stats de saison ; on le signale et on donne l'agrégat saison).
+    """
+    fallback = answer_season_fallback(question)
+    if fallback is not None:
+        answer, context_lines = fallback
+        if not context_lines:  # donnée saison indisponible : on signale au moins l'absence
+            return RoutedAnswer(route="sql", answer=answer, notice=MISSING_INFO_NOTICE)
+        return RoutedAnswer(
+            route="sql",
+            answer=answer,
+            retrieved_contexts=context_lines,
+            sources=summarize_sql_sources(answer),
+            notice=SQL_NOTICE,
+        )
+
+    if SQL_GENERATION_MODE == "llm":
+        return _answer_sql_llm(question)
     numeric = answer_numeric_question(question)
     if numeric is None:
         return RoutedAnswer(route="sql", answer=NOT_SUPPORTED_MESSAGE, notice=MISSING_INFO_NOTICE)
@@ -211,6 +244,30 @@ def _answer_sql(question):
         sources=summarize_sql_sources(answer),
         notice=SQL_NOTICE,
     )
+
+
+def _answer_sql_llm(question):
+    """Route SQL EXPÉRIMENTALE : requête générée par le LLM, validée, puis exécutée.
+
+    Activée seulement si `SQL_GENERATION_MODE=llm`. Le LLM n'exécute jamais de SQL :
+    `run_llm_sql` génère la requête, la valide (lecture seule) et la passe au SQL Tool
+    sécurisé. En cas de refus, d'échec de validation ou d'erreur, on renvoie un message
+    honnête (aucun chiffre inventé, jamais de SQL brut affiché). `mode="llm_sql"` trace
+    la condition pour la comparaison RAGAS.
+    """
+    from .sql.llm_sql_pipeline import run_llm_sql  # import paresseux : aucun coût en mode contrôlé
+
+    result = run_llm_sql(question)
+    if result.execution_status == "ok" and result.rows:
+        return RoutedAnswer(
+            route="sql",
+            answer=result.answer,
+            retrieved_contexts=result.context_lines(),
+            mode="llm_sql",
+            sources=[SQL_SOURCE_LABEL, LLM_SQL_SOURCE_LABEL],
+            notice=SQL_NOTICE,
+        )
+    return RoutedAnswer(route="sql", answer=result.answer, mode="llm_sql", notice=MISSING_INFO_NOTICE)
 
 
 def _sql_context(text):
