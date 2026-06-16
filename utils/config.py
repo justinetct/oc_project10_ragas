@@ -38,31 +38,36 @@ if HYBRID_MODE not in _VALID_HYBRID_MODES:
     raise ValueError(f"HYBRID_MODE invalide : {HYBRID_MODE}. Valeurs possibles : {_VALID_HYBRID_MODES}")
 HYBRID_RAG_K = 3                    # Nb d'extraits FAISS ajoutés en mode sql_with_rag_context
 
+# --- Génération des requêtes SQL (mode contrôlé vs expérimental LLM→SQL) ---
+# Décide COMMENT la requête SQL des questions chiffrées est produite :
+# - "controlled" (DÉFAUT) : mode de production actuel. Les requêtes viennent d'un
+#   mapping figé à colonnes sur liste blanche (`utils/sql/nba_intents.py`). Aucun
+#   SQL n'est écrit par le LLM. C'est le mode par défaut, inchangé.
+# - "llm" (EXPÉRIMENTAL) : le LLM génère la requête SQL à partir de la question
+#   (`utils/sql/llm_sql_generator.py`), puis cette requête passe TOUJOURS par le
+#   SQL Tool sécurisé en lecture seule. Activable par configuration uniquement,
+#   pour comparer l'approche « SQL généré » au mode contrôlé. Le LLM n'exécute
+#   jamais de SQL et aucune écriture en base n'est possible.
+SQL_GENERATION_MODE = os.getenv("SQL_GENERATION_MODE", "controlled")
+_VALID_SQL_GENERATION_MODES = ("controlled", "llm")
+if SQL_GENERATION_MODE not in _VALID_SQL_GENERATION_MODES:
+    raise ValueError(
+        f"SQL_GENERATION_MODE invalide : {SQL_GENERATION_MODE}. "
+        f"Valeurs possibles : {_VALID_SQL_GENERATION_MODES}"
+    )
+# Plafond de lignes imposé aux requêtes générées par le LLM (défense en profondeur :
+# il s'ajoute au plafond du SQL Tool, même si le LLM oublie un LIMIT).
+LLM_SQL_ROW_LIMIT = 50
+# Nombre de lignes RÉELLEMENT récupérées pour présenter la réponse (un top 5 est affiché,
+# le reste sert de contexte vérifiable) : on contrôle ce nombre nous-mêmes plutôt que de
+# dépendre du LIMIT choisi par le LLM, pour TOUJOURS présenter un classement comme le mode
+# contrôlé. Reste sous LLM_SQL_ROW_LIMIT (garde-fou de sécurité).
+LLM_SQL_DISPLAY_LIMIT = 10
+
 # --- Configuration de l'évaluation RAGAS ---
-EVALUATION_DIR = "evaluation"
-# Jeu figé E01-E15 : seul jeu officiel de comparaison avant/après sur tout le projet.
-EVALUATION_DATASET_FILE = os.path.join(EVALUATION_DIR, "evaluation_questions.csv")
-EVALUATION_RESULTS_DIR = os.path.join(EVALUATION_DIR, "results")
-RAGAS_BASELINE_RESULTS_FILE = os.path.join(EVALUATION_RESULTS_DIR, "ragas_baseline_results.csv")
-RAGAS_BASELINE_SUMMARY_FILE = os.path.join(EVALUATION_RESULTS_DIR, "ragas_baseline_summary.json")
-
-RAGAS_JUDGE_MODEL = "mistral-large-latest"
-RAGAS_METRIC_COLUMNS = [
-    "faithfulness",
-    "answer_relevancy",
-    "context_precision",
-    "context_recall",
-]
-RAGAS_ANSWER_RELEVANCY_STRICTNESS = 1
-# Débit du juge RAGAS. mistral-large est limité par clé (~0,25 req/s sur plan Scale)
-RAGAS_MAX_WORKERS = 1
-RAGAS_REQUESTS_PER_SECOND = 0.2475
-RAGAS_TIMEOUT_SECONDS = 300
-RAGAS_MAX_RETRIES = 15
-RAGAS_MAX_WAIT_SECONDS = 90
-
-# None = évaluation complète. Entier N = run partiel sur les N premières questions.
-RAGAS_LIMIT_QUESTIONS = None
+# Déplacée dans utils/ragas_config.py (chemins d'évaluation, métriques, aspect_critic,
+# parse_extra_metrics, limites/retries/timeout, RAGAS_LIMIT_QUESTIONS). Les noms publics
+# sont inchangés : importer depuis `utils.ragas_config`.
 
 # --- Configuration de l'observabilité (Logfire, optionnelle) ---
 # Sans token (ni LOGFIRE_TOKEN, ni `logfire auth`), l'application reste en mode

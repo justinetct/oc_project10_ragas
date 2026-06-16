@@ -59,6 +59,24 @@ STAT_METRICS = {
     "points": (("point", "marqueur", "scoreur"), "points"),
 }
 
+# Découpages de données NON disponibles : le fichier source est agrégé sur la saison
+# (une ligne par joueur), sans journal par match ni distinction domicile/extérieur. Une
+# question qui en dépend ne peut pas être calculée telle quelle ; au lieu de refuser sèchement
+# on SIGNALE l'absence et on propose l'équivalent saison (cf. `detect_season_fallback`).
+UNAVAILABLE_GRANULARITY_TERMS = (
+    "domicile", "exterieur",
+    "dernier match", "derniers matchs", "5 derniers", "cinq derniers",
+    "10 derniers", "dix derniers", "par mois", "par semaine", "par journee",
+)
+
+# Avertissement honnête (placé en tête de la réponse de repli). Décrit ce qui MANQUE, pas
+# de détail technique : reste cohérent avec le comportement attendu par l'énoncé (E11).
+SEASON_ONLY_NOTICE = (
+    "Je ne dispose pas de statistiques match par match (ni de répartition "
+    "domicile/extérieur, ni de « derniers matchs ») : les données sont agrégées sur "
+    "l'ensemble de la saison régulière, une ligne par joueur."
+)
+
 # Mots-clés signalant une demande de fiche joueur (consultation, pas classement).
 PLAYER_STATS_KEYWORDS = (
     "statistique", "stat", "fiche", "profil", "chiffres", "combien",
@@ -165,6 +183,31 @@ def build_ranking_intent(metric, direction, question):
     return {"kind": "ranking", "metric": metric, "direction": direction}
 
 
+def detect_season_fallback(question):
+    """Intention de repli « saison » si la question demande une granularité indisponible.
+
+    DERNIER RECOURS uniquement : déclenché quand la question vise un découpage qu'on n'a pas
+    (domicile/extérieur, matchs récents) ET porte sur une stat connue, MAIS qu'aucun cas plus
+    spécifique ne s'applique. On ne préempte donc ni la fiche d'un joueur nommé, ni l'âge, ni
+    le 3P%, ni un classement de joueurs : ceux-là répondent (sur la saison) et gagnent. Pour
+    E11 (« rebonds domicile/extérieur des équipes »), aucun de ces cas ne s'applique -> on
+    renvoie l'agrégat SAISON par équipe en signalant l'absence de granularité. Sinon None.
+    """
+    q = normalize(question)
+    if not mentions(q, UNAVAILABLE_GRANULARITY_TERMS):
+        return None
+    # Ne pas préempter un cas plus spécifique (fiche joueur, âge, total équipe, 3P%…).
+    if detect_special_case(question) is not None:
+        return None
+    metric = detect_metric(question)
+    if metric is None:
+        return None
+    # Ni un classement de joueurs (« quels joueurs ont le plus de… ») : on le laisse gagner.
+    if build_ranking_intent(metric, detect_ranking_direction(question), question) is not None:
+        return None
+    return {"kind": "season_fallback", "metric": metric}
+
+
 # --- 4. Construction de la requête autorisée ----------------------------------
 
 def build_safe_query(intent):
@@ -208,6 +251,15 @@ def build_safe_query(intent):
         player = intent["player"]
         # Le nom passe par un « ? » (paramètre), jamais collé dans le texte SQL.
         return PLAYER_STATS_QUERY, (player,), f"Statistiques de {player}", 1
+
+    if kind == "season_fallback":
+        column = intent["metric"]        # clé STAT_METRICS = nom de colonne sûr
+        noun = STAT_METRICS[column][1]
+        label = (
+            f"{SEASON_ONLY_NOTICE} À titre indicatif, voici le total de {noun} par équipe "
+            "sur l'ensemble de la saison"
+        )
+        return _team_total_stat_query(column), (), label, 10
 
     return None
 
@@ -256,6 +308,22 @@ def _team_total_points_query(direction="DESC"):
     ).format(dir=direction)
 
 
+def _team_total_stat_query(column):
+    """Total d'une statistique (colonne sur LISTE BLANCHE) par équipe, trié décroissant.
+
+    `column` est TOUJOURS une clé de `STAT_METRICS` (contrôlée en interne), jamais issue du
+    texte utilisateur : l'insertion par .format est donc sûre (SQLite ne paramètre pas un
+    nom de colonne). Utilisé par le repli « saison » (`answer_season_fallback`).
+    """
+    return (
+        "SELECT t.team_name, SUM(s.{col}) AS {col} "
+        "FROM stats s "
+        "JOIN players p ON p.player_id = s.player_id "
+        "JOIN teams t ON t.team_code = p.team_code "
+        "GROUP BY t.team_name ORDER BY SUM(s.{col}) DESC LIMIT 10"
+    ).format(col=column)
+
+
 def _is_three_point(q):
     """Vrai si la question porte sur le tir à 3 points (formes courantes/bruitées)."""
     return any(form in q for form in ("3 point", "3point", "3 pts", "3pts", "3p", "trois point", "three point"))
@@ -270,18 +338,41 @@ def _player_names():
 def find_player_name(question):
     """Repère un joueur connu cité (nom complet ou nom de famille), sinon None.
 
+    DEUX passes, pour qu'un nom COMPLET l'emporte toujours sur un simple nom de famille,
+    quel que soit l'ordre de parcours des joueurs en base (les lignes reviennent triées
+    alphabétiquement, pas de garantie d'ordre métier) :
+
+    1. nom complet : on renvoie tout joueur dont le nom normalisé complet est cité dans
+       la question (« LeBron James ») — y compris s'il est parcouru après un homonyme de
+       nom de famille (« Bronny James ») ;
+    2. nom de famille (repli) : sinon seulement, on retombe sur le nom de famille (>= 4
+       lettres). Si PLUSIEURS joueurs partagent ce nom de famille (« James » -> LeBron,
+       Bronny…), c'est ambigu : on DÉCLINE (None) plutôt que de renvoyer un joueur au
+       hasard.
+
     Tolère les virgules OCR ("P,J, Tucker") via la normalisation. Retourne le nom
     EXACT en base, pour une requête paramétrée.
     """
     q = normalize(question)
     q_tokens = q.split()
-    for name in _player_names():
+    names = _player_names()
+
+    # Passe 1 : un nom complet cité gagne GLOBALEMENT (sur tous les joueurs, pas seulement
+    # ceux parcourus avant lui) -> un homonyme de nom de famille ne peut plus passer devant.
+    for name in names:
         normalized_name = normalize(name)
         if normalized_name and normalized_name in q:
             return name
-        parts = normalized_name.split()
+
+    # Passe 2 : repli sur le nom de famille. On collecte TOUS les joueurs dont le nom de
+    # famille est cité ; s'il y en a plusieurs (homonymes), on décline plutôt que de deviner.
+    surname_matches = []
+    for name in names:
+        parts = normalize(name).split()
         if parts and len(parts[-1]) >= 4 and parts[-1] in q_tokens:
-            return name
+            surname_matches.append(name)
+    if len(surname_matches) == 1:
+        return surname_matches[0]
     return None
 
 
@@ -300,21 +391,12 @@ def format_answer(label, rows, top=5):
 
 # --- Orchestration ------------------------------------------------------------
 
-def answer_numeric_question(question):
-    """(réponse FR, lignes de contexte) pour une question chiffrée couverte, sinon None.
+def _run_intent(intent):
+    """Construit la requête d'une intention, l'exécute via le SQL Tool sécurisé, met en forme.
 
-    Pipeline : on détecte l'intention (cas spécial, sinon classement simple), on
-    construit une requête autorisée, on l'exécute via le SQL Tool sécurisé, puis on met
-    en forme. Toute erreur devient un message clair, jamais un chiffre inventé.
+    Retourne (réponse FR, lignes de contexte) ou None si l'intention n'est pas constructible.
+    Toute erreur d'exécution devient un message clair, jamais un chiffre inventé.
     """
-    intent = detect_special_case(question)
-    if intent is None:
-        metric = detect_metric(question)
-        direction = detect_ranking_direction(question)
-        intent = build_ranking_intent(metric, direction, question)
-    if intent is None:
-        return None
-
     query_info = build_safe_query(intent)
     if query_info is None:
         return None
@@ -334,3 +416,40 @@ def answer_numeric_question(question):
     if not rows:
         return ("Aucune donnée ne correspond à cette question chiffrée.", [])
     return format_answer(label, rows), [_format_row(row) for row in rows]
+
+
+def answer_numeric_question(question):
+    """(réponse FR, lignes de contexte) pour une question chiffrée couverte, sinon None.
+
+    Pipeline : on détecte l'intention (cas spécial, sinon classement simple), on
+    construit une requête autorisée, on l'exécute via le SQL Tool sécurisé, puis on met
+    en forme. Toute erreur devient un message clair, jamais un chiffre inventé.
+    """
+    intent = detect_special_case(question)
+    if intent is None:
+        metric = detect_metric(question)
+        direction = detect_ranking_direction(question)
+        intent = build_ranking_intent(metric, direction, question)
+    if intent is None:
+        return None
+    return _run_intent(intent)
+
+
+def answer_season_fallback(question):
+    """(réponse FR, lignes de contexte) pour une question à granularité indisponible, sinon None.
+
+    Réponse HONNÊTE commune aux deux modes SQL (contrôlé et LLM) : on signale l'absence de
+    données match par match / domicile-extérieur, puis on donne l'agrégat SAISON de la stat
+    citée (via le SQL Tool sécurisé). Aucun chiffre inventé. Si la donnée saison est
+    indisponible, on renvoie au moins l'avertissement (`SEASON_ONLY_NOTICE`).
+    """
+    intent = detect_season_fallback(question)
+    if intent is None:
+        return None
+    result = _run_intent(intent)
+    if result is None:
+        return None
+    answer, context_lines = result
+    if not context_lines:  # base absente / erreur / aucune donnée : on signale l'absence
+        return (SEASON_ONLY_NOTICE, [])
+    return answer, context_lines

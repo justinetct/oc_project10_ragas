@@ -73,14 +73,20 @@ EXAMPLE_QUERIES = {
 }
 
 
-def run_read_only_query(query, params=(), db_file=DB_FILE, limit=DEFAULT_ROW_LIMIT):
-    """Contrôle puis exécute une requête SQL en LECTURE SEULE sur la base NBA.
+def assert_read_only(query):
+    """Contrôle statique d'une requête (lecture seule), SANS accès à la base.
 
-    Retourne une liste de dictionnaires (une entrée par ligne). Lève :
-    - ValueError si la requête est refusée (écriture, requêtes multiples…)
-      ou invalide (erreur SQL) ;
-    - FileNotFoundError si la base n'existe pas (elle est générée par
-      `scripts/load_excel_to_db.py`, jamais par ce module).
+    Source de vérité unique des garde-fous : seul ce contrôle décide si une requête
+    est acceptable. Il est utilisé à la fois par `run_read_only_query` (exécution
+    contrôlée) et par le mode expérimental « SQL généré par le LLM »
+    (`utils/sql/llm_sql_generator.py`), qui valide ainsi la requête produite par le
+    LLM avant toute exécution.
+
+    Retourne l'instruction nettoyée (sans le ';' final éventuel), ou lève ValueError :
+    - requête vide ;
+    - requêtes multiples (un ';' autre que final -> bloque `; DROP TABLE …`) ;
+    - requête qui ne commence pas par SELECT/WITH (lecture seule) ;
+    - présence d'un mot-clé d'écriture/administration (`FORBIDDEN_KEYWORDS`).
     """
     cleaned = (query or "").strip()
     if not cleaned:
@@ -97,6 +103,19 @@ def run_read_only_query(query, params=(), db_file=DB_FILE, limit=DEFAULT_ROW_LIM
     for keyword in FORBIDDEN_KEYWORDS:
         if re.search(rf"\b{keyword}\b", upper):
             raise ValueError(f"Mot-clé interdit dans la requête : {keyword}.")
+    return statement
+
+
+def run_read_only_query(query, params=(), db_file=DB_FILE, limit=DEFAULT_ROW_LIMIT):
+    """Contrôle puis exécute une requête SQL en LECTURE SEULE sur la base NBA.
+
+    Retourne une liste de dictionnaires (une entrée par ligne). Lève :
+    - ValueError si la requête est refusée (écriture, requêtes multiples…)
+      ou invalide (erreur SQL) ;
+    - FileNotFoundError si la base n'existe pas (elle est générée par
+      `scripts/load_excel_to_db.py`, jamais par ce module).
+    """
+    statement = assert_read_only(query)  # garde-fous statiques (source de vérité unique)
 
     if not os.path.exists(db_file):
         raise FileNotFoundError(

@@ -16,6 +16,11 @@ def test_import_config():
     importlib.import_module("utils.config")
 
 
+def test_import_ragas_config():
+    """La config RAGAS extraite s'importe seule (sans exiger la clé API)."""
+    importlib.import_module("utils.ragas_config")
+
+
 def test_import_vector_store_module():
     importlib.import_module("utils.vector_store")
 
