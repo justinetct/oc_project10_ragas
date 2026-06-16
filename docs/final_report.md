@@ -25,7 +25,8 @@
    - [Résultats du routage](#résultats--avant--après-routage)
    - [Choix du mode hybride](#choix-du-mode-hybride)
    - [Mode expérimental : SQL généré par le LLM](#mode-expérimental--sql-généré-par-le-llm)
-8. [Conclusion](#8-conclusion)
+8. [Limites, biais et risques](#8-limites-biais-et-risques)
+9. [Conclusion](#9-conclusion)
 - [Annexe — exemples de requêtes SQL](#annexe--exemples-de-requêtes-sql)
 
 ---
@@ -506,10 +507,21 @@ Les figures ci-dessous consolident les résultats discutés plus haut. Elles son
 - en mode contrôlé (défaut), la couverture SQL est bornée aux requêtes prédéfinies ; le mode `llm_sql` couvre davantage de questions composées. Ce qui est absent de la base (ex. splits domicile/extérieur) reste signalé comme indisponible dans les deux modes ;
 - RAGAS juge mal deux familles de réponses correctes : les refus (hors-sujet, note 0 par construction) et les réponses interprétatives des questions mixtes ; le comparatif chiffré est donc complété d'une lecture qualitative des réponses, en particulier sur les questions mixtes.
 
+## 8. Limites, biais et risques
+
+Plusieurs limites restent à garder en tête.
+
+- **Données NBA** : le fichier Excel contient des statistiques agrégées sur la saison. Il ne contient pas de matchs individuels, de 5 derniers matchs ni de découpage domicile / extérieur. Les questions de ce type doivent donc être refusées ou reformulées avec une alternative sur la saison.
+- **Routage et SQL** : le mode contrôlé est stable mais limité aux intentions prévues. Le mode `llm_sql` couvre davantage de formulations, mais il reste plus variable et peut produire une requête valide mais mal adaptée à la question. C’est pour cela que toutes les requêtes passent par validation et lecture seule.
+- **Corpus Reddit** : les PDF viennent de captures et d’OCR. Ils contiennent du bruit, des fautes et des opinions de fans. Le système peut résumer ces discussions, mais elles ne représentent pas toute la NBA.
+- **Évaluation RAGAS** : le jeu figé contient 15 questions, dont peu de questions SQL. Le juge LLM varie d’un run à l’autre et note mal certains refus pourtant corrects. Les résultats sont donc lus comme des tendances, avec des runs répétés quand c’est nécessaire.
+- **Généralisation** : les résultats valent pour ce corpus, ce modèle et ces données. Un changement de modèle, de saison NBA ou de documents demanderait de relancer l’évaluation.
+
+Les pistes d’amélioration réalistes seraient d’ajouter des données match par match, d’élargir le jeu de questions, de surveiller les cas mal routés et de relancer les métriques après tout changement important de modèle ou de corpus.
 
 ---
 
-## 8. Conclusion
+## 9. Conclusion
 
 ### Bilan
 
@@ -534,14 +546,6 @@ Le mode hybride par défaut est fixé à `sql_only`, et le mode `llm_sql` reste 
 > - pas de changement du modèle principal de génération ;
 > - pas de modification du jeu de questions après la baseline ;
 > - pas de mise à jour automatique des résultats dans le README : les scores sont reportés manuellement, après vérification.
-
----
-
-### TODO avant version finale
-
-- [ ] Relecture finale du rapport.
-- [ ] Vérification des chiffres dans `evaluation/results/` et le notebook.
-- [ ] Nettoyage éventuel des fichiers temporaires de résultats.
 
 ---
 
