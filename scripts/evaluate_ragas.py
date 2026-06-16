@@ -50,12 +50,15 @@ import argparse
 import logfire
 
 from utils.config import (
-    MISTRAL_API_KEY, MODEL_NAME, EMBEDDING_MODEL, HYBRID_MODE,
+    MISTRAL_API_KEY, MODEL_NAME, EMBEDDING_MODEL, HYBRID_MODE, SQL_GENERATION_MODE,
     FAISS_INDEX_FILE, DOCUMENT_CHUNKS_FILE,
-    EVALUATION_DATASET_FILE, EVALUATION_RESULTS_DIR,
+)
+from utils.ragas_config import (
+    EVALUATION_DATASET_FILE, EVALUATION_RESULTS_DIR, RAGAS_DATASET_PATH,
     RAGAS_JUDGE_MODEL, RAGAS_METRIC_COLUMNS, RAGAS_ANSWER_RELEVANCY_STRICTNESS,
     RAGAS_MAX_WORKERS, RAGAS_REQUESTS_PER_SECOND, RAGAS_TIMEOUT_SECONDS,
     RAGAS_MAX_RETRIES, RAGAS_MAX_WAIT_SECONDS, RAGAS_LIMIT_QUESTIONS,
+    RAGAS_EXTRA_METRICS, RAGAS_ASPECT_CRITIC_NAME, RAGAS_ASPECT_CRITIC_DEFINITION,
 )
 from utils.vector_store import VectorStoreManager
 from utils.router import answer_question
@@ -98,12 +101,19 @@ RESULTS_DIR = EVALUATION_RESULTS_DIR
 
 # La génération vit dans utils/rag_agent.py ; le routage dans utils/router.py.
 
-# Colonnes du CSV de résultats détaillés (route + mode tracent le chemin réellement suivi).
-RESULT_COLUMNS = [
+# Colonnes "métier" du CSV de résultats (route + mode tracent le chemin réellement suivi).
+# Les colonnes de métriques (4 historiques + éventuelles extra) sont ajoutées dynamiquement
+# selon les métriques actives du run (cf. `result_columns`).
+BASE_RESULT_COLUMNS = [
     "id", "category", "route", "mode", "question", "answer", "retrieved_contexts",
     "reference_answer", "expected_behavior", "source_hint",
     "requires_sql_future", "notes",
-] + RAGAS_METRIC_COLUMNS
+]
+
+
+def result_columns(metric_columns):
+    """Colonnes du CSV détaillé : colonnes métier + colonnes de métriques actives."""
+    return BASE_RESULT_COLUMNS + list(metric_columns)
 
 
 def load_dataset(path=DATASET_PATH):
@@ -227,19 +237,76 @@ def build_ragas_judge():
     return llm, embeddings
 
 
-def build_ragas_metrics():
-    """Les 4 métriques RAGAS classiques.
+# Abréviations pour le suffixe de label quand des métriques extra sont activées.
+_EXTRA_METRIC_ABBREV = {
+    "answer_correctness": "correctness",
+    "answer_similarity": "similarity",
+    "aspect_critic": "aspect",
+}
 
-    `faithfulness`, `context_precision`, `context_recall` : instances par défaut.
-    `answer_relevancy` via `ResponseRelevancy(strictness=1)` pour contourner un
-    bug d'agrégation des tokens de langchain-mistralai 0.2.x (n>1).
+
+def extra_metrics_label_suffix(extra_metrics):
+    """Suffixe de label clair selon les métriques extra activées (vide si aucune).
+
+    Ex. ['answer_correctness'] -> '_with_correctness' ;
+        ['answer_correctness', 'aspect_critic'] -> '_with_correctness_aspect'.
+    Garantit des fichiers de sortie distincts sans écraser les résultats existants.
     """
-    return [
+    if not extra_metrics:
+        return ""
+    parts = [_EXTRA_METRIC_ABBREV.get(m, m) for m in extra_metrics]
+    return "_with_" + "_".join(parts)
+
+
+def _build_extra_metric(key, llm):
+    """Construit l'instance d'une métrique extra, ou None si indisponible dans cette RAGAS.
+
+    Import paresseux + try/except : une version de RAGAS qui ne fournirait pas la métrique
+    est gérée proprement (métrique ignorée), sans casser les 4 métriques historiques.
+    """
+    try:
+        if key == "answer_correctness":
+            from ragas.metrics import answer_correctness
+            return answer_correctness
+        if key == "answer_similarity":
+            from ragas.metrics import answer_similarity
+            return answer_similarity
+        if key == "aspect_critic":
+            from ragas.metrics import AspectCritic
+            return AspectCritic(
+                name=RAGAS_ASPECT_CRITIC_NAME,
+                definition=RAGAS_ASPECT_CRITIC_DEFINITION,
+                llm=llm,
+            )
+    except ImportError:
+        return None
+    return None
+
+
+def build_ragas_metrics(extra_metrics=(), llm=None):
+    """Retourne (metrics, metric_columns) : 4 métriques historiques + extras demandées.
+
+    Les 4 historiques sont TOUJOURS présentes (`faithfulness`, `answer_relevancy` via
+    `ResponseRelevancy(strictness=1)` — contourne un bug d'agrégation de langchain-mistralai
+    0.2.x —, `context_precision`, `context_recall`). Chaque métrique extra réellement
+    construite ajoute sa colonne (= sa clé) ; une métrique indisponible est ignorée (avec un
+    avertissement) et n'apparaît pas dans `metric_columns`.
+    """
+    metrics = [
         faithfulness,
         ResponseRelevancy(strictness=RAGAS_ANSWER_RELEVANCY_STRICTNESS),
         context_precision,
         context_recall,
     ]
+    columns = list(RAGAS_METRIC_COLUMNS)
+    for key in extra_metrics:
+        instance = _build_extra_metric(key, llm)
+        if instance is None:
+            logging.warning("Métrique RAGAS extra '%s' indisponible dans cette version : ignorée.", key)
+            continue
+        metrics.append(instance)
+        columns.append(key)  # la colonne de résultat == la clé (answer_correctness / answer_similarity / aspect_critic)
+    return metrics, columns
 
 
 def run_ragas_evaluation(dataset, llm, embeddings, metrics):
@@ -272,8 +339,11 @@ def _is_missing(value):
         return False
 
 
-def merge_scores(records, ragas_df):
-    """Joint les scores RAGAS aux records (aligné par position, NaN -> None)."""
+def merge_scores(records, ragas_df, metric_columns):
+    """Joint les scores RAGAS aux records (aligné par position, NaN -> None).
+
+    `metric_columns` = colonnes de métriques actives (4 historiques + éventuelles extra).
+    """
     if len(records) != len(ragas_df):
         raise ValueError(
             f"Désaccord d'ordre : {len(records)} records vs {len(ragas_df)} lignes RAGAS."
@@ -282,32 +352,36 @@ def merge_scores(records, ragas_df):
     for index, base in enumerate(records):
         enriched = dict(base)
         row = ragas_df.iloc[index]
-        for column in RAGAS_METRIC_COLUMNS:
+        for column in metric_columns:
             value = row.get(column) if column in ragas_df.columns else None
             enriched[column] = None if _is_missing(value) else round(float(value), 4)
         merged.append(enriched)
     return merged
 
 
-def summarize_ragas_results(merged, eval_label):
-    """Résumé : moyennes globales, par catégorie et par route (manquants ignorés)."""
+def summarize_ragas_results(merged, eval_label, metric_columns, extra_metrics=()):
+    """Résumé : moyennes globales, par catégorie et par route (manquants ignorés).
+
+    `metric_columns` = métriques actives (4 historiques + extras) ; `extra_metrics` = la
+    liste des extras réellement activées (pour tracer ce qui a été mesuré).
+    """
     def average(items, column):
         values = [r.get(column) for r in items if not _is_missing(r.get(column))]
         return round(sum(values) / len(values), 4) if values else None
 
-    mean_scores = {m: average(merged, m) for m in RAGAS_METRIC_COLUMNS}
+    mean_scores = {m: average(merged, m) for m in metric_columns}
     n_scored = {
         m: sum(1 for r in merged if not _is_missing(r.get(m)))
-        for m in RAGAS_METRIC_COLUMNS
+        for m in metric_columns
     }
     categories = sorted({r["category"] for r in merged})
     mean_by_category = {
-        cat: {m: average([r for r in merged if r["category"] == cat], m) for m in RAGAS_METRIC_COLUMNS}
+        cat: {m: average([r for r in merged if r["category"] == cat], m) for m in metric_columns}
         for cat in categories
     }
     routes = sorted({r.get("route") or "?" for r in merged})
     mean_by_route = {
-        route: {m: average([r for r in merged if (r.get("route") or "?") == route], m) for m in RAGAS_METRIC_COLUMNS}
+        route: {m: average([r for r in merged if (r.get("route") or "?") == route], m) for m in metric_columns}
         for route in routes
     }
     route_distribution = {route: sum(1 for r in merged if (r.get("route") or "?") == route) for route in routes}
@@ -316,11 +390,15 @@ def summarize_ragas_results(merged, eval_label):
         "run_datetime": datetime.datetime.now().isoformat(timespec="seconds"),
         "eval_label": eval_label,
         "model": MODEL_NAME,
+        "sql_generation_mode": SQL_GENERATION_MODE,
         "hybrid_mode": HYBRID_MODE,
         "judge_model": RAGAS_JUDGE_MODEL,
         "embedding_model": EMBEDDING_MODEL,
         "ragas_version": ragas.__version__,
-        "metrics": RAGAS_METRIC_COLUMNS,
+        "metrics": list(metric_columns),
+        "base_metrics": list(RAGAS_METRIC_COLUMNS),
+        "extra_metrics": list(extra_metrics),
+        "extra_metrics_enabled": bool(extra_metrics),
         "relevancy_strictness": RAGAS_ANSWER_RELEVANCY_STRICTNESS,
         "ragas_max_workers": RAGAS_MAX_WORKERS,
         "throttle_requests_per_second": RAGAS_REQUESTS_PER_SECOND,
@@ -341,19 +419,23 @@ def summarize_ragas_results(merged, eval_label):
     }
 
 
-def save_results(merged, summary, results_csv, summary_json):
-    """Écrit le CSV détaillé et le résumé JSON aux chemins donnés."""
+def save_results(merged, summary, results_csv, summary_json, metric_columns):
+    """Écrit le CSV détaillé et le résumé JSON aux chemins donnés.
+
+    `metric_columns` = métriques actives : leurs colonnes sont ajoutées au CSV.
+    """
     os.makedirs(RESULTS_DIR, exist_ok=True)
+    columns = result_columns(metric_columns)
 
     with open(results_csv, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS)
+        writer = csv.DictWriter(f, fieldnames=columns)
         writer.writeheader()
         for rec in merged:
-            row = {key: rec.get(key) for key in RESULT_COLUMNS}
+            row = {key: rec.get(key) for key in columns}
             # Les contextes (liste) sont stockés en JSON pour rester relisibles.
             row["retrieved_contexts"] = json.dumps(rec["retrieved_contexts"], ensure_ascii=False)
             # Score manquant (None / NaN) -> cellule vide.
-            for m in RAGAS_METRIC_COLUMNS:
+            for m in metric_columns:
                 if row.get(m) is None:
                     row[m] = ""
             writer.writerow(row)
@@ -378,9 +460,22 @@ def main():
     )
     args = parser.parse_args()
     force_route = "rag" if args.eval_mode == "baseline_rag" else None
-    label = "baseline_rag" if args.eval_mode == "baseline_rag" else f"routed_{HYBRID_MODE}"
+    extra_metrics = list(RAGAS_EXTRA_METRICS)
+    # Le label inclut le mode de génération SQL (controlled/llm) ET le mode hybride :
+    # chaque condition écrit donc des fichiers distincts, sans écraser les précédents.
+    label = "baseline_rag" if args.eval_mode == "baseline_rag" else f"routed_{SQL_GENERATION_MODE}_{HYBRID_MODE}"
+    # Jeu non figé (ex. extended) -> suffixe dataset : on ne touche pas aux fichiers du jeu figé.
+    if RAGAS_DATASET_PATH:
+        dataset_stem = os.path.splitext(os.path.basename(EVALUATION_DATASET_FILE))[0]
+        label += f"_{dataset_stem}"
+    # Métriques extra -> suffixe clair (_with_correctness, _with_correctness_aspect…) :
+    # les fichiers extra ne remplacent JAMAIS les résultats des 4 métriques historiques.
+    label += extra_metrics_label_suffix(extra_metrics)
 
     print(f"=== Évaluation RAGAS — assistant RAG NBA (condition : {label}) ===")
+    print(f"Modes : SQL_GENERATION_MODE={SQL_GENERATION_MODE} | HYBRID_MODE={HYBRID_MODE}")
+    print(f"Dataset : {EVALUATION_DATASET_FILE}")
+    print("Métriques : 4 historiques" + (f" + extra {extra_metrics}" if extra_metrics else " (aucune extra)"))
     configure_logfire()  # observabilité optionnelle (Logfire) ; non bloquante sans token
 
     # 1. Vérifications préalables (sans jamais afficher la clé).
@@ -415,32 +510,32 @@ def main():
     print("Étape 1/3 : exécution du pipeline (1 réponse par question)…")
     records = run_rag_inference(rows, manager, force_route=force_route)
 
-    # Étape 2 : dataset RAGAS + juge + métriques.
-    n_jobs = len(records) * len(RAGAS_METRIC_COLUMNS)
-    print(
-        f"Étape 2/3 : évaluation RAGAS — {len(records)} questions × "
-        f"{len(RAGAS_METRIC_COLUMNS)} métriques = {n_jobs} jobs "
-        f"(juge {RAGAS_JUDGE_MODEL}, max_workers={RAGAS_MAX_WORKERS})…"
-    )
+    # Étape 2 : dataset RAGAS + juge + métriques (4 historiques + extras éventuelles).
     dataset = build_ragas_dataset(records)
     llm, embeddings = build_ragas_judge()
-    metrics = build_ragas_metrics()
-    with logfire.span("ragas_evaluation", n_questions=len(records), n_metrics=len(RAGAS_METRIC_COLUMNS)):
+    metrics, metric_columns = build_ragas_metrics(extra_metrics, llm)
+    n_jobs = len(records) * len(metric_columns)
+    print(
+        f"Étape 2/3 : évaluation RAGAS — {len(records)} questions × "
+        f"{len(metric_columns)} métriques {metric_columns} = {n_jobs} jobs "
+        f"(juge {RAGAS_JUDGE_MODEL}, max_workers={RAGAS_MAX_WORKERS})…"
+    )
+    with logfire.span("ragas_evaluation", n_questions=len(records), n_metrics=len(metric_columns)):
         ragas_df = run_ragas_evaluation(dataset, llm, embeddings, metrics)
 
     # Étape 3 : fusion + résumé + sauvegarde.
     print("Étape 3/3 : fusion des scores et écriture des résultats…")
-    merged = merge_scores(records, ragas_df)
-    summary = summarize_ragas_results(merged, label)
-    save_results(merged, summary, results_csv, summary_json)
+    merged = merge_scores(records, ragas_df, metric_columns)
+    summary = summarize_ragas_results(merged, label, metric_columns, extra_metrics)
+    save_results(merged, summary, results_csv, summary_json, metric_columns)
 
     # Affichage console.
-    print(f"\n=== Résultats ({label}) — 4 métriques RAGAS ===")
+    print(f"\n=== Résultats ({label}) — {len(metric_columns)} métriques RAGAS ===")
     print(f"Questions évaluées : {summary['n_evaluated']}/{summary['n_questions']}")
     print(f"Routes utilisées   : {summary['route_distribution']}")
     print(f"Scores notés par métrique : {summary['n_scored_per_metric']}")
     print("Scores moyens :")
-    for m in RAGAS_METRIC_COLUMNS:
+    for m in metric_columns:
         print(f"  - {m:18} {summary['mean_scores'][m]}")
     print("Scores moyens par catégorie :")
     for cat, scores in summary["mean_scores_by_category"].items():
@@ -454,7 +549,7 @@ def main():
     print(
         f"\nÉvaluation complète : {'OUI' if all_scored else 'NON (scores manquants !)'} — "
         f"{summary['n_evaluated']}/{summary['n_questions']} questions, "
-        f"{len(RAGAS_METRIC_COLUMNS)} métriques notées pour chacune."
+        f"{len(metric_columns)} métriques notées pour chacune."
     )
     # Bilan réseau : les 429 de capacité (masqués pendant le run) ne sont pas des
     # échecs mais des tentatives réessayées automatiquement jusqu'à aboutir.
