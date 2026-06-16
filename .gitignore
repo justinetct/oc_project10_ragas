@@ -38,7 +38,11 @@ data/
 # RAGAS — résultats partiels (checkpoints de test rapide, non versionnés)
 evaluation/results/ragas_baseline_results_partial.csv
 evaluation/results/ragas_baseline_summary_partial.json
-evaluation/results/variance_runs/
+
+# variance_runs/ : on NE versionne PAS le brut (CSV par run, logs), mais on GARDE les
+# résumés ×5 (…_run*_summary.json) dont le notebook a besoin pour l'analyse de variance.
+evaluation/results/variance_runs/*
+!evaluation/results/variance_runs/*_run*_summary.json
 
 # Streamlit
 .streamlit/
