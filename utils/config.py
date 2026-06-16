@@ -64,6 +64,22 @@ LLM_SQL_ROW_LIMIT = 50
 # contrôlé. Reste sous LLM_SQL_ROW_LIMIT (garde-fou de sécurité).
 LLM_SQL_DISPLAY_LIMIT = 10
 
+# --- Mode de prompt RAG (prototype conversationnel vs strict orienté RAGAS) ---
+# Choisit le SYSTEM_PROMPT utilisé par la génération RAG (`utils/rag_agent.py`) :
+# - "prototype" (DÉFAUT) : prompt conversationnel d'origine (« NBA Analyst AI » qui
+#   anime le débat). Comportement de production inchangé.
+# - "strict" (EXPÉRIMENTAL) : prompt strict orienté RAG/RAGAS. Le modèle s'en tient aux
+#   contextes récupérés (et aux chiffres SQL ajoutés par le système), refuse de compléter
+#   avec des connaissances générales et n'invente aucun chiffre. Activable par configuration
+#   UNIQUEMENT, pour comparer son ancrage (faithfulness) au prompt prototype.
+RAG_PROMPT_MODE = os.getenv("RAG_PROMPT_MODE", "prototype")
+_VALID_RAG_PROMPT_MODES = ("prototype", "strict")
+if RAG_PROMPT_MODE not in _VALID_RAG_PROMPT_MODES:
+    raise ValueError(
+        f"RAG_PROMPT_MODE invalide : {RAG_PROMPT_MODE}. "
+        f"Valeurs possibles : {_VALID_RAG_PROMPT_MODES}"
+    )
+
 # --- Configuration de l'évaluation RAGAS ---
 # Déplacée dans utils/ragas_config.py (chemins d'évaluation, métriques, aspect_critic,
 # parse_extra_metrics, limites/retries/timeout, RAGAS_LIMIT_QUESTIONS). Les noms publics
