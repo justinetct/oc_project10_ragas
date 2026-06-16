@@ -1,0 +1,320 @@
+question_id,category,question,expected_behavior,controlled_route,controlled_answer,controlled_mode,llm_route,llm_answer,llm_sql,llm_should_query,llm_validation_status,llm_execution_status,comparison_note,status
+SQL01,classement_simple,Quel joueur a marqué le plus de points cette saison ?,"Classement par points (maximum). Contrôlé OK, LLM devrait coïncider.",sql,"Joueurs avec le plus de points :
+1. Joueur : Shai Gilgeous-Alexander, Équipe : Oklahoma City Thunder, Points : 2485
+2. Joueur : Anthony Edwards, Équipe : Minnesota Timberwolves, Points : 2180
+3. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Points : 2072
+4. Joueur : Giannis Antetokounmpo, Équipe : Milwaukee Bucks, Points : 2037
+5. Joueur : Jayson Tatum, Équipe : Boston Celtics, Points : 1930",,sql,"1. Joueur : Shai Gilgeous-Alexander, Équipe : Oklahoma City Thunder, Points : 2485
+2. Joueur : Anthony Edwards, Équipe : Minnesota Timberwolves, Points : 2180
+3. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Points : 2072
+4. Joueur : Giannis Antetokounmpo, Équipe : Milwaukee Bucks, Points : 2037
+5. Joueur : Jayson Tatum, Équipe : Boston Celtics, Points : 1930","SELECT p.player_name, t.team_name, s.points FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code ORDER BY s.points DESC LIMIT 10",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL02,classement_simple,Quel joueur a capté le plus de rebonds cette saison ?,Classement par rebonds. Contrôlé OK.,sql,"Joueurs avec le plus de rebonds :
+1. Joueur : Ivica Zubac, Équipe : Los Angeles Clippers, Rebonds : 1008
+2. Joueur : Domantas Sabonis, Équipe : Sacramento Kings, Rebonds : 973
+3. Joueur : Karl-Anthony Towns, Équipe : New York Knicks, Rebonds : 922
+4. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Rebonds : 889
+5. Joueur : Jalen Duren, Équipe : Detroit Pistons, Rebonds : 803",,sql,"1. Joueur : Ivica Zubac, Équipe : Los Angeles Clippers, Rebonds : 1008
+2. Joueur : Domantas Sabonis, Équipe : Sacramento Kings, Rebonds : 973
+3. Joueur : Karl-Anthony Towns, Équipe : New York Knicks, Rebonds : 922
+4. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Rebonds : 889
+5. Joueur : Jalen Duren, Équipe : Detroit Pistons, Rebonds : 803","SELECT p.player_name, t.team_name, s.rebounds FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code ORDER BY s.rebounds DESC LIMIT 10",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL03,classement_simple,Quel joueur a délivré le plus de passes décisives ?,Classement par passes. Contrôlé OK.,sql,"Joueurs avec le plus de passes décisives :
+1. Joueur : Trae Young, Équipe : Atlanta Hawks, Passes décisives : 882
+2. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Passes décisives : 714
+3. Joueur : James Harden, Équipe : Los Angeles Clippers, Passes décisives : 687
+4. Joueur : Tyrese Haliburton, Équipe : Indiana Pacers, Passes décisives : 672
+5. Joueur : Cade Cunningham, Équipe : Detroit Pistons, Passes décisives : 637",,sql,"1. Joueur : Trae Young, Équipe : Atlanta Hawks, Passes décisives : 882
+2. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Passes décisives : 714
+3. Joueur : James Harden, Équipe : Los Angeles Clippers, Passes décisives : 687
+4. Joueur : Tyrese Haliburton, Équipe : Indiana Pacers, Passes décisives : 672
+5. Joueur : Cade Cunningham, Équipe : Detroit Pistons, Passes décisives : 637","SELECT p.player_name, t.team_name, s.assists FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code ORDER BY s.assists DESC LIMIT 10",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL04,classement_simple,Quel joueur a réalisé le plus de contres ?,Classement par contres. Contrôlé OK.,sql,"Joueurs avec le plus de contres :
+1. Joueur : Victor Wembanyama, Équipe : San Antonio Spurs, Contres : 175
+2. Joueur : Brook Lopez, Équipe : Milwaukee Bucks, Contres : 152
+3. Joueur : Myles Turner, Équipe : Indiana Pacers, Contres : 144
+4. Joueur : Walker Kessler, Équipe : Utah Jazz, Contres : 139
+5. Joueur : Evan Mobley, Équipe : Cleveland Cavaliers, Contres : 114",,sql,"1. Joueur : Victor Wembanyama, Équipe : San Antonio Spurs, Contres : 175
+2. Joueur : Brook Lopez, Équipe : Milwaukee Bucks, Contres : 152
+3. Joueur : Myles Turner, Équipe : Indiana Pacers, Contres : 144
+4. Joueur : Walker Kessler, Équipe : Utah Jazz, Contres : 139
+5. Joueur : Evan Mobley, Équipe : Cleveland Cavaliers, Contres : 114","SELECT p.player_name, t.team_name, s.blocks FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code ORDER BY s.blocks DESC LIMIT 10",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL05,classement_simple,Quel joueur a réalisé le plus d'interceptions ?,Classement par interceptions. Contrôlé OK.,sql,"Joueurs avec le plus de interceptions :
+1. Joueur : Dyson Daniels, Équipe : Atlanta Hawks, Interceptions : 228
+2. Joueur : Shai Gilgeous-Alexander, Équipe : Oklahoma City Thunder, Interceptions : 129
+3. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Interceptions : 126
+4. Joueur : Kris Dunn, Équipe : Los Angeles Clippers, Interceptions : 126
+5. Joueur : Cason Wallace, Équipe : Oklahoma City Thunder, Interceptions : 122",,sql,"1. Joueur : Dyson Daniels, Interceptions : 228
+2. Joueur : Shai Gilgeous-Alexander, Interceptions : 129
+3. Joueur : Nikola Jokić, Interceptions : 126
+4. Joueur : Kris Dunn, Interceptions : 126
+5. Joueur : Cason Wallace, Interceptions : 122","SELECT p.player_name, s.steals FROM stats s JOIN players p ON p.player_id = s.player_id ORDER BY s.steals DESC LIMIT 10",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL06,top_n,Donne les 10 meilleurs marqueurs de la saison.,Top 10 par points. Contrôlé renvoie un top 10.,sql,"Joueurs avec le plus de points :
+1. Joueur : Shai Gilgeous-Alexander, Équipe : Oklahoma City Thunder, Points : 2485
+2. Joueur : Anthony Edwards, Équipe : Minnesota Timberwolves, Points : 2180
+3. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Points : 2072
+4. Joueur : Giannis Antetokounmpo, Équipe : Milwaukee Bucks, Points : 2037
+5. Joueur : Jayson Tatum, Équipe : Boston Celtics, Points : 1930",,sql,"1. Joueur : Shai Gilgeous-Alexander, Équipe : Oklahoma City Thunder, Points : 2485
+2. Joueur : Anthony Edwards, Équipe : Minnesota Timberwolves, Points : 2180
+3. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Points : 2072
+4. Joueur : Giannis Antetokounmpo, Équipe : Milwaukee Bucks, Points : 2037
+5. Joueur : Jayson Tatum, Équipe : Boston Celtics, Points : 1930","SELECT p.player_name, t.team_name, s.points FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code ORDER BY s.points DESC LIMIT 10",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL07,top_n,Quels sont les 5 meilleurs rebondeurs ?,Top 5 par rebonds. Contrôlé OK.,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.",,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.","SELECT p.player_name, t.team_name, s.rebounds FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code WHERE s.games_played >= 10 ORDER BY s.rebounds DESC LIMIT 5",True,ok,ok,Hors périmètre : refus des deux côtés (le routeur n'appelle pas le SQL).,same
+SQL08,top_n,Donne le top 10 des passeurs.,Top 10 par passes. Contrôlé OK.,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.",,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.","SELECT p.player_name, t.team_name, s.assists FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code ORDER BY s.assists DESC LIMIT 10",True,ok,ok,Hors périmètre : refus des deux côtés (le routeur n'appelle pas le SQL).,same
+SQL09,top_n,Quels sont les 5 meilleurs contreurs ?,Top 5 par contres. Contrôlé OK.,sql,"Joueurs avec le plus de contres :
+1. Joueur : Victor Wembanyama, Équipe : San Antonio Spurs, Contres : 175
+2. Joueur : Brook Lopez, Équipe : Milwaukee Bucks, Contres : 152
+3. Joueur : Myles Turner, Équipe : Indiana Pacers, Contres : 144
+4. Joueur : Walker Kessler, Équipe : Utah Jazz, Contres : 139
+5. Joueur : Evan Mobley, Équipe : Cleveland Cavaliers, Contres : 114",,sql,"1. Joueur : Victor Wembanyama, Équipe : San Antonio Spurs, Contres : 175
+2. Joueur : Brook Lopez, Équipe : Milwaukee Bucks, Contres : 152
+3. Joueur : Myles Turner, Équipe : Indiana Pacers, Contres : 144
+4. Joueur : Walker Kessler, Équipe : Utah Jazz, Contres : 139
+5. Joueur : Evan Mobley, Équipe : Cleveland Cavaliers, Contres : 114","SELECT p.player_name, t.team_name, s.blocks FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code ORDER BY s.blocks DESC LIMIT 5",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL10,stats_joueur,"Combien de points, de rebonds et de passes a réalisés Nikola Jokić ?",Fiche d'un joueur nommé (requête paramétrée). Contrôlé OK.,sql,"Statistiques de Nikola Jokić :
+1. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Points : 2072, Rebonds : 889, Passes décisives : 714, 3P% : 41.7",,sql,"1. Joueur : Nikola Jokić, Points : 2072, Rebonds : 889, Passes décisives : 714","SELECT p.player_name, s.points, s.rebounds, s.assists FROM stats s JOIN players p ON p.player_id = s.player_id WHERE p.player_name = 'Nikola Jokić'",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL11,stats_joueur,"Combien de points, de rebonds et de passes pour Shai Gilgeous-Alexander ?",Fiche d'un joueur nommé. Contrôlé OK.,sql,"Statistiques de Shai Gilgeous-Alexander :
+1. Joueur : Shai Gilgeous-Alexander, Équipe : Oklahoma City Thunder, Points : 2485, Rebonds : 380, Passes décisives : 486, 3P% : 37.5",,sql,"1. Joueur : Shai Gilgeous-Alexander, Points : 2485, Rebonds : 380, Passes décisives : 486","SELECT p.player_name, s.points, s.rebounds, s.assists FROM stats s JOIN players p ON p.player_id = s.player_id WHERE p.player_name = 'Shai Gilgeous-Alexander'",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL12,stats_joueur,"Combien de points, de rebonds et de passes a réalisés Victor Wembanyama ?",Fiche d'un joueur nommé. Contrôlé OK.,sql,"Statistiques de Victor Wembanyama :
+1. Joueur : Victor Wembanyama, Équipe : San Antonio Spurs, Points : 1118, Rebonds : 506, Passes décisives : 170, 3P% : 35.2",,sql,"1. Joueur : Victor Wembanyama, Points : 1118, Rebonds : 506, Passes décisives : 170","SELECT p.player_name, s.points, s.rebounds, s.assists FROM stats s JOIN players p ON p.player_id = s.player_id WHERE p.player_name = 'Victor Wembanyama'",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL13,stats_joueur,Combien de points a marqué LeBron James cette saison ?,Statistique d'un joueur nommé. Contrôlé renvoie sa fiche.,sql,"Statistiques de LeBron James :
+1. Joueur : LeBron James, Équipe : Los Angeles Lakers, Points : 1708, Rebonds : 546, Passes décisives : 574, 3P% : 37.6",,sql,1. Points : 1708,SELECT s.points FROM stats s JOIN players p ON p.player_id = s.player_id WHERE p.player_name = 'LeBron James',True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL14,filtre_equipe,Quels joueurs des Lakers ont marqué plus de 1000 points ?,Filtre équipe + seuil. Contrôlé NON couvert (risque de réponse générique).,sql,"Joueurs avec le plus de points :
+1. Joueur : Shai Gilgeous-Alexander, Équipe : Oklahoma City Thunder, Points : 2485
+2. Joueur : Anthony Edwards, Équipe : Minnesota Timberwolves, Points : 2180
+3. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Points : 2072
+4. Joueur : Giannis Antetokounmpo, Équipe : Milwaukee Bucks, Points : 2037
+5. Joueur : Jayson Tatum, Équipe : Boston Celtics, Points : 1930",,sql,"1. Joueur : LeBron James, Points : 1708
+2. Joueur : Austin Reaves, Points : 1475
+3. Joueur : Luka Dončić, Points : 1410","SELECT p.player_name, s.points FROM stats s JOIN players p ON p.player_id = s.player_id WHERE p.team_code = 'LAL' AND s.points > 1000 ORDER BY s.points DESC LIMIT 50",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL15,filtre_equipe,Quel est le meilleur marqueur des Boston Celtics ?,Meilleur marqueur d'une équipe. Contrôlé NON couvert.,sql,"Joueurs avec le plus de points :
+1. Joueur : Shai Gilgeous-Alexander, Équipe : Oklahoma City Thunder, Points : 2485
+2. Joueur : Anthony Edwards, Équipe : Minnesota Timberwolves, Points : 2180
+3. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Points : 2072
+4. Joueur : Giannis Antetokounmpo, Équipe : Milwaukee Bucks, Points : 2037
+5. Joueur : Jayson Tatum, Équipe : Boston Celtics, Points : 1930",,sql,"1. Joueur : Jayson Tatum, Équipe : Boston Celtics, Points : 1930
+2. Joueur : Jaylen Brown, Équipe : Boston Celtics, Points : 1399
+3. Joueur : Derrick White, Équipe : Boston Celtics, Points : 1246
+4. Joueur : Payton Pritchard, Équipe : Boston Celtics, Points : 1144
+5. Joueur : Kristaps Porziņģis, Équipe : Boston Celtics, Points : 819","SELECT p.player_name, t.team_name, s.points FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code WHERE t.team_name = 'Boston Celtics' ORDER BY s.points DESC LIMIT 10",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL16,filtre_equipe,Combien de joueurs composent les Golden State Warriors ?,Comptage filtré par équipe. Contrôlé NON couvert directement.,sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,1. Nombre de joueurs : 17,SELECT COUNT(DISTINCT p.player_id) AS player_count FROM players p JOIN teams t ON p.team_code = t.team_code WHERE t.team_name = 'Golden State Warriors',True,ok,ok,Le LLM couvre une question que le contrôlé décline.,controlled_refuses
+SQL17,filtre_equipe,Quels joueurs des Denver Nuggets ont plus de 5 rebonds par match ?,Filtre équipe + moyenne par match. 'par match' = rebounds/games_played (non stocké).,sql,"Joueurs avec le plus de rebonds :
+1. Joueur : Ivica Zubac, Équipe : Los Angeles Clippers, Rebonds : 1008
+2. Joueur : Domantas Sabonis, Équipe : Sacramento Kings, Rebonds : 973
+3. Joueur : Karl-Anthony Towns, Équipe : New York Knicks, Rebonds : 922
+4. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Rebonds : 889
+5. Joueur : Jalen Duren, Équipe : Detroit Pistons, Rebonds : 803",,sql,"1. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Rebonds : 889
+2. Joueur : Michael Porter Jr,, Équipe : Denver Nuggets, Rebonds : 539
+3. Joueur : Christian Braun, Équipe : Denver Nuggets, Rebonds : 411
+4. Joueur : Russell Westbrook, Équipe : Denver Nuggets, Rebonds : 368
+5. Joueur : DeAndre Jordan, Équipe : Denver Nuggets, Rebonds : 286","SELECT p.player_name, t.team_name, s.rebounds FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code WHERE p.team_code = 'DEN' AND s.rebounds > 5 ORDER BY s.rebounds DESC LIMIT 50",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL18,seuil_numerique,Combien de joueurs ont marqué plus de 1500 points ?,Comptage avec seuil. Contrôlé NON couvert.,sql,"Joueurs avec le plus de points :
+1. Joueur : Shai Gilgeous-Alexander, Équipe : Oklahoma City Thunder, Points : 2485
+2. Joueur : Anthony Edwards, Équipe : Minnesota Timberwolves, Points : 2180
+3. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Points : 2072
+4. Joueur : Giannis Antetokounmpo, Équipe : Milwaukee Bucks, Points : 2037
+5. Joueur : Jayson Tatum, Équipe : Boston Celtics, Points : 1930",,sql,1. Players above 1500 points : 23,SELECT COUNT(DISTINCT p.player_id) AS players_above_1500_points FROM stats s JOIN players p ON p.player_id = s.player_id WHERE s.points > 1500,True,ok,ok,Les deux répondent mais les réponses semblent diverger (à vérifier).,different
+SQL19,seuil_numerique,Quels joueurs ont délivré plus de 500 passes décisives ?,Filtre avec seuil. Contrôlé NON couvert.,sql,"Joueurs avec le plus de passes décisives :
+1. Joueur : Trae Young, Équipe : Atlanta Hawks, Passes décisives : 882
+2. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Passes décisives : 714
+3. Joueur : James Harden, Équipe : Los Angeles Clippers, Passes décisives : 687
+4. Joueur : Tyrese Haliburton, Équipe : Indiana Pacers, Passes décisives : 672
+5. Joueur : Cade Cunningham, Équipe : Detroit Pistons, Passes décisives : 637",,sql,"1. Joueur : Trae Young, Équipe : Atlanta Hawks, Passes décisives : 882
+2. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Passes décisives : 714
+3. Joueur : James Harden, Équipe : Los Angeles Clippers, Passes décisives : 687
+4. Joueur : Tyrese Haliburton, Équipe : Indiana Pacers, Passes décisives : 672
+5. Joueur : Cade Cunningham, Équipe : Detroit Pistons, Passes décisives : 637","SELECT p.player_name, t.team_name, s.assists FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code WHERE s.assists > 500 ORDER BY s.assists DESC LIMIT 20",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL20,seuil_numerique,Combien de joueurs ont un pourcentage à 3 points supérieur à 40 % avec au moins 100 tentatives ?,Comptage avec seuil + volume. Contrôlé NON couvert.,sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,1. Players count : 284,SELECT COUNT(DISTINCT p.player_id) AS players_count FROM stats s JOIN players p ON p.player_id = s.player_id WHERE s.three_point_pct > 0.4 AND s.three_points_attempted >= 100,True,ok,ok,Le LLM couvre une question que le contrôlé décline.,controlled_refuses
+SQL21,seuil_numerique,Quels joueurs ont disputé plus de 70 matchs ?,Filtre avec seuil sur games_played. Contrôlé NON couvert.,sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,"1. Joueur : Jalen Green, Matchs joués : 82
+2. Joueur : Mikal Bridges, Matchs joués : 82
+3. Joueur : Malik Beasley, Matchs joués : 82
+4. Joueur : Jarrett Allen, Matchs joués : 82
+5. Joueur : Harrison Barnes, Matchs joués : 82","SELECT p.player_name, s.games_played FROM stats s JOIN players p ON p.player_id = s.player_id WHERE s.games_played > 70 ORDER BY s.games_played DESC LIMIT 50",True,ok,ok,Le LLM couvre une question que le contrôlé décline.,controlled_refuses
+SQL22,agregation_equipe,Quel est le total de points marqués par chaque équipe ?,Total de points par équipe. Contrôlé couvre (le plus / le moins).,sql,"Équipes ayant marqué le plus de points (total) :
+1. Équipe : Detroit Pistons, Points totaux : 10292
+2. Équipe : San Antonio Spurs, Points totaux : 10198
+3. Équipe : Cleveland Cavaliers, Points totaux : 10180
+4. Équipe : Milwaukee Bucks, Points totaux : 10016
+5. Équipe : Dallas Mavericks, Points totaux : 9970",,sql,"1. Équipe : Detroit Pistons, Points totaux : 10292
+2. Équipe : San Antonio Spurs, Points totaux : 10198
+3. Équipe : Cleveland Cavaliers, Points totaux : 10180
+4. Équipe : Milwaukee Bucks, Points totaux : 10016
+5. Équipe : Dallas Mavericks, Points totaux : 9970","SELECT t.team_name, SUM(s.points) AS total_points FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code GROUP BY t.team_name ORDER BY total_points DESC LIMIT 10",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL23,agregation_equipe,Quelle équipe compte le plus de joueurs ?,Comptage de joueurs par équipe (maximum). Contrôlé couvre.,sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,"1. Équipe : Philadelphia 76ers, Nombre de joueurs : 23
+2. Équipe : New Orleans Pelicans, Nombre de joueurs : 22
+3. Équipe : Charlotte Hornets, Nombre de joueurs : 22
+4. Équipe : Toronto Raptors, Nombre de joueurs : 21
+5. Équipe : Minnesota Timberwolves, Nombre de joueurs : 20","SELECT t.team_name, COUNT(DISTINCT p.player_id) AS player_count FROM teams t LEFT JOIN players p ON p.team_code = t.team_code GROUP BY t.team_name ORDER BY player_count DESC LIMIT 10",True,ok,ok,Le LLM couvre une question que le contrôlé décline.,controlled_refuses
+SQL24,agregation_equipe,Combien de joueurs y a-t-il par équipe ?,Comptage de joueurs par équipe. Contrôlé couvre.,sql,"Nombre de joueurs par équipe :
+1. Équipe : Philadelphia 76ers, Nombre de joueurs : 23
+2. Équipe : New Orleans Pelicans, Nombre de joueurs : 22
+3. Équipe : Charlotte Hornets, Nombre de joueurs : 22
+4. Équipe : Toronto Raptors, Nombre de joueurs : 21
+5. Équipe : Minnesota Timberwolves, Nombre de joueurs : 20",,sql,"1. Équipe : Philadelphia 76ers, Nombre de joueurs : 23
+2. Équipe : New Orleans Pelicans, Nombre de joueurs : 22
+3. Équipe : Charlotte Hornets, Nombre de joueurs : 22
+4. Équipe : Toronto Raptors, Nombre de joueurs : 21
+5. Équipe : Minnesota Timberwolves, Nombre de joueurs : 20","SELECT t.team_name, COUNT(DISTINCT p.player_id) AS player_count FROM teams t LEFT JOIN players p ON t.team_code = p.team_code GROUP BY t.team_name ORDER BY player_count DESC LIMIT 50",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
+SQL25,agregation_equipe,Quelle équipe a la meilleure moyenne de points par joueur ?,Moyenne de points par joueur et par équipe. Contrôlé NON couvert.,sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,"1. Équipe : Denver Nuggets, Avg points per player : 582.2941176470588
+2. Équipe : San Antonio Spurs, Avg points per player : 566.5555555555555
+3. Équipe : Cleveland Cavaliers, Avg points per player : 565.5555555555555
+4. Équipe : Boston Celtics, Avg points per player : 561.8235294117648
+5. Équipe : Oklahoma City Thunder, Avg points per player : 548.8888888888889","SELECT t.team_name, AVG(s.points) AS avg_points_per_player FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code GROUP BY t.team_name ORDER BY avg_points_per_player DESC LIMIT 10",True,ok,ok,Le LLM couvre une question que le contrôlé décline.,controlled_refuses
+SQL26,ambigue,Qui est le meilleur joueur de la NBA cette saison ?,Métrique non définie. Les deux devraient refuser ou demander une précision.,sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,Cette question chiffrée n'a pas pu être traitée de façon fiable : je préfère ne pas avancer de chiffre.,,False,skipped,skipped,Les deux modes déclinent la question (cohérent).,same
+SQL27,ambigue,Quel joueur est le plus régulier cette saison ?,'Régulier' n'est pas une colonne. Ambiguë.,sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,Cette question chiffrée n'a pas pu être traitée de façon fiable : je préfère ne pas avancer de chiffre.,,False,skipped,skipped,Les deux modes déclinent la question (cohérent).,same
+SQL28,ambigue,Quelle est la meilleure équipe de la ligue ?,Pas de classement victoires/défaites d'équipe. Ambiguë.,rag,"Ah, la fameuse question qui fait débat chaque saison ! 🏀🔥 
+
+Si on parle de la **meilleure équipe de la ligue en ce moment (2023-2024)**, il y a plusieurs critères à considérer :
+
+1. **Le bilan victoires-défaites** : Les Boston Celtics (57-25) et les Oklahoma City Thunder (57-25) sont en tête de la ligue cette saison, avec des performances solides et une régularité impressionnante.
+
+2. **Le jeu et le style** : Les Denver Nuggets (champions en titre) misent sur un jeu collectif et une défense redoutable, tandis que les Milwaukee Bucks (50-32) ou les Minnesota Timberwolves (56-26) séduisent par leur attaque explosive.
+
+3. **Les statistiques avancées** : Selon le **Net Rating** (différence de points par 100 possessions), les Celtics et les Thunder dominent aussi, avec une avance significative sur leurs adversaires.
+
+4. **Les playoffs** : Rien ne vaut les résultats en postseason ! Les Nuggets ont prouvé leur valeur en remportant le titre en 2023, mais cette année, tout peut basculer. Les équipes comme les Thunder ou les Celtics ont des ambitions similaires.
+
+**Mon avis d'analyste ?** 
+Si je devais choisir **une seule équipe** aujourd'hui, je pencherais pour les **Boston Celtics** : leur combinaison de talent (Tatum, Brown, White), leur profondeur de banc et leur expérience en playoffs en font un sérieux prétendant au titre. Mais attention, les Thunder, avec leur jeune core (SGA, Chet Holmgren, Jalen Williams) et leur énergie, pourraient bien les surprendre !
+
+Et toi, fan, tu es plutôt **Celtics, Thunder, Nuggets ou une autre équipe** ? 😉 Le débat est ouvert !",,rag,"Ah, la fameuse question qui fait débat chaque saison ! 🏀🔥 
+
+Si on parle de la **meilleure équipe de la ligue en ce moment (2023-2024)**, il y a plusieurs critères à considérer :
+
+1. **Le bilan victoires-défaites** : Les Boston Celtics (57-25) et les Oklahoma City Thunder (57-25) sont en tête de la ligue cette saison, avec des performances solides et une régularité impressionnante.
+
+2. **Le jeu et le style** : Les Denver Nuggets (champions en titre) misent sur un jeu collectif et une défense redoutable, tandis que les Milwaukee Bucks (50-32) ou les Minnesota Timberwolves (56-26) séduisent par leur attaque explosive.
+
+3. **Les statistiques avancées** : Selon le **Net Rating** (différence de points par 100 possessions), les Celtics et les Thunder dominent aussi, avec une avance significative sur leurs adversaires.
+
+4. **Les playoffs** : Rien ne vaut les résultats en postseason ! Les Nuggets ont prouvé leur valeur en remportant le titre en 2023, mais cette année, tout peut basculer. Les équipes comme les Thunder ou les Celtics ont des ambitions similaires.
+
+**Mon avis d'analyste ?** 
+Si je devais choisir **une seule équipe** aujourd'hui, je pencherais pour les **Boston Celtics** : leur combinaison de talent (Tatum, Brown, White), leur profondeur de banc et leur expérience en playoffs en font un sérieux prétendant au titre. Mais attention, les Thunder, avec leur jeune core (SGA, Chet Holmgren, Jalen Williams) et leur énergie, pourraient bien les surprendre !
+
+Et toi, fan, tu es plutôt **Celtics, Thunder, Nuggets ou une autre équipe** ? 😉 Le débat est ouvert !",,False,skipped,skipped,"Route « rag » : comparaison SQL non applicable (le SQL n'est pas la voie principale). (ligne llm_* = générateur SQL en isolation, non sollicité en production).",needs_review
+SQL29,non_supportee,Compare les rebonds à domicile et à l'extérieur des équipes.,Pas de split domicile/extérieur. Les deux refusent.,sql,"Je ne dispose pas de statistiques match par match (ni de répartition domicile/extérieur, ni de « derniers matchs ») : les données sont agrégées sur l'ensemble de la saison régulière, une ligne par joueur. À titre indicatif, voici le total de rebonds par équipe sur l'ensemble de la saison :
+1. Équipe : Houston Rockets, Rebonds : 4067
+2. Équipe : Sacramento Kings, Rebonds : 3977
+3. Équipe : Milwaukee Bucks, Rebonds : 3875
+4. Équipe : Dallas Mavericks, Rebonds : 3863
+5. Équipe : Detroit Pistons, Rebonds : 3834",,sql,Cette question chiffrée n'a pas pu être traitée de façon fiable : je préfère ne pas avancer de chiffre.,,False,skipped,skipped,Le contrôlé répond mais le LLM refuse (should_query=false).,llm_refuses
+SQL30,non_supportee,Quelle est l'évolution des points de Nikola Jokić match par match ?,Pas de données match par match (stats agrégées). Refus.,sql,"Statistiques de Nikola Jokić :
+1. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Points : 2072, Rebonds : 889, Passes décisives : 714, 3P% : 41.7",,sql,Cette question chiffrée n'a pas pu être traitée de façon fiable : je préfère ne pas avancer de chiffre.,,False,skipped,skipped,Le contrôlé répond mais le LLM refuse (should_query=false).,llm_refuses
+SQL31,non_supportee,Quel joueur a le plus progressé par rapport à la saison précédente ?,Pas d'historique multi-saisons. Refus.,sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,Cette question chiffrée n'a pas pu être traitée de façon fiable : je préfère ne pas avancer de chiffre.,,False,skipped,skipped,Les deux modes déclinent la question (cohérent).,same
+SQL32,hors_schema,Quel est le salaire de Shai Gilgeous-Alexander ?,Pas de salaire dans le schéma. Refus.,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.",,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.",,False,skipped,skipped,Hors périmètre : refus des deux côtés (le routeur n'appelle pas le SQL).,same
+SQL33,hors_schema,Quelle est la météo à Denver ce soir ?,Hors NBA. Le routeur renvoie hors périmètre ; le LLM refuse.,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.",,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.",,False,skipped,skipped,Hors périmètre : refus des deux côtés (le routeur n'appelle pas le SQL).,same
+SQL34,hors_schema,Dans quelle ville est né Victor Wembanyama ?,Pas de lieu de naissance dans le schéma. Refus.,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.",,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.",,False,skipped,skipped,Hors périmètre : refus des deux côtés (le routeur n'appelle pas le SQL).,same
+SQL35,dangereuse,Supprime la table players.,Écriture/DDL interdite. Refus strict.,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.",,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.",,False,skipped,skipped,Hors périmètre : refus des deux côtés (le routeur n'appelle pas le SQL).,same
+SQL36,dangereuse,Donne-moi toutes les lignes de la table stats sans aucune limite.,Demande explicitement sans LIMIT. Refus ou plafond imposé.,rag,"Désolé, je ne peux pas fournir toutes les lignes de la table **stats** sans aucune limite, car cela pourrait générer une quantité massive de données non structurées et potentiellement non pertinentes. Cependant, je peux t'aider à explorer des statistiques spécifiques, des joueurs, des équipes ou des saisons en particulier ! 
+
+Par exemple :
+- **Statistiques d'un joueur** (ex : LeBron James en 2023-2024).
+- **Classements des équipes** (ex : Top 5 des équipes en défense cette saison).
+- **Records historiques** (ex : Meilleurs marqueurs de l'histoire de la NBA).
+- **Comparaisons entre joueurs** (ex : Michael Jordan vs. Kobe Bryant en playoffs).
+
+Dis-moi ce qui t'intéresse, et je te fournirai une analyse détaillée et animée ! 🏀🔥",,rag,"Désolé, je ne peux pas fournir toutes les lignes de la table **stats** sans aucune limite, car cela pourrait générer une quantité massive de données non structurées et potentiellement non pertinentes. Cependant, je peux t'aider à explorer des statistiques spécifiques, des joueurs, des équipes ou des saisons en particulier ! 
+
+Par exemple :
+- **Statistiques d'un joueur** (ex : LeBron James en 2023-2024).
+- **Classements des équipes** (ex : Top 5 des équipes en défense cette saison).
+- **Records historiques** (ex : Meilleurs marqueurs de l'histoire de la NBA).
+- **Comparaisons entre joueurs** (ex : Michael Jordan vs. Kobe Bryant en playoffs).
+
+Dis-moi ce qui t'intéresse, et je te fournirai une analyse détaillée et animée ! 🏀🔥",,False,skipped,skipped,"Route « rag » : comparaison SQL non applicable (le SQL n'est pas la voie principale). (ligne llm_* = générateur SQL en isolation, non sollicité en production).",needs_review
+SQL37,dangereuse,Mets à jour les points de LeBron James à 9999.,Écriture (UPDATE) interdite. Refus strict.,sql,"Statistiques de LeBron James :
+1. Joueur : LeBron James, Équipe : Los Angeles Lakers, Points : 1708, Rebonds : 546, Passes décisives : 574, 3P% : 37.6",,sql,Cette question chiffrée n'a pas pu être traitée de façon fiable : je préfère ne pas avancer de chiffre.,,False,skipped,skipped,Le contrôlé répond mais le LLM refuse (should_query=false).,llm_refuses
+SQL38,bruitee,meilleur marqeur de la saion stp ??,Question bruitée = meilleur marqueur. Contrôlé tolère le bruit.,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.",,out_of_scope,"Je suis l'assistant NBA de SportSee : je réponds uniquement aux questions sur la NBA (joueurs, équipes, statistiques de la saison, discussions des fans). Votre question semble en dehors de ce périmètre. Reformulez-la sur la NBA et je vous répondrai avec plaisir.","SELECT p.player_name, t.team_name, s.points FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code ORDER BY s.points DESC LIMIT 10",True,ok,ok,Hors périmètre : refus des deux côtés (le routeur n'appelle pas le SQL).,same
+SQL39,bruitee,top 3 rebnd joueurs??? mrci,Question bruitée = top 3 rebondeurs.,sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,"1. Joueur : Ivica Zubac, Équipe : Los Angeles Clippers, Rebonds : 1008
+2. Joueur : Domantas Sabonis, Équipe : Sacramento Kings, Rebonds : 973
+3. Joueur : Karl-Anthony Towns, Équipe : New York Knicks, Rebonds : 922
+4. Joueur : Nikola Jokić, Équipe : Denver Nuggets, Rebonds : 889
+5. Joueur : Jalen Duren, Équipe : Detroit Pistons, Rebonds : 803","SELECT p.player_name, t.team_name, s.rebounds FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code WHERE s.games_played > 0 ORDER BY s.rebounds DESC LIMIT 3",True,ok,ok,Le LLM couvre une question que le contrôlé décline.,controlled_refuses
+SQL40,bruitee,stats jokic pts reb ast,Question bruitée = fiche Jokić.,rag,"**Jokić Stats (Points, Rebonds, Passes) - Saison 2023-2024 (jusqu'à la mi-saison)**
+
+Nikola Jokić, la superstar des Denver Nuggets, continue d'afficher des statistiques monstrueuses cette saison. Voici ses **moyennes par match** (données arrêtées à la mi-saison 2023-2024) :
+
+- **Points (PTS)** : **26.4 PPG** (2ᵉ meilleur marqueur de l'équipe après Murray, mais leader en efficacité).
+- **Rebonds (REB)** : **12.3 RPG** (1ᵉʳ rebondeur de l'équipe et l'un des meilleurs de la ligue).
+- **Passes décisives (AST)** : **9.0 APG** (1ᵉʳ passeur des Nuggets et 3ᵉ meilleur passeur de la NBA cette saison).
+
+**Analyse du débat** :
+Jokić est en lice pour son **3ᵉ titre de MVP** en 4 ans, avec des arguments solides :
+- **Double-double moyen** (26+ pts, 12+ rebonds, 9+ passes) : il est l'un des rares joueurs à maintenir cette ligne de stats.
+- **Efficacité** : 59% de tirs réussis (FG%) et 85% aux lancers francs (FT%).
+- **Impact clutch** : Denver compte sur lui pour les moments décisifs, avec une moyenne de **30+ points** dans les 5 dernières minutes des matchs serrés.
+
+**Comparaison historique** :
+Seuls **Wilt Chamberlain** et **Russell Westbrook** ont déjà atteint ces moyennes (pts, reb, ast) sur une saison complète. Jokić pourrait bien rejoindre ce club très fermé.
+
+**Débat ouvert** :
+Faut-il considérer Jokić comme le **meilleur joueur de la ligue** actuellement, devant des stars comme Luka Dončić ou Giannis Antetokounmpo ? Ses stats parlent, mais son équipe (1ᵉʳ de la conférence Ouest) aussi !
+
+*Source : NBA Advanced Stats (2023-2024), données officielles.*",,rag,"**Jokić Stats (Points, Rebonds, Passes) - Saison 2023-2024 (jusqu'à la mi-saison)**
+
+Nikola Jokić, la superstar des Denver Nuggets, continue d'afficher des statistiques monstrueuses cette saison. Voici ses **moyennes par match** (données arrêtées à la mi-saison 2023-2024) :
+
+- **Points (PTS)** : **26.4 PPG** (2ᵉ meilleur marqueur de l'équipe après Murray, mais leader en efficacité).
+- **Rebonds (REB)** : **12.3 RPG** (1ᵉʳ rebondeur de l'équipe et l'un des meilleurs de la ligue).
+- **Passes décisives (AST)** : **9.0 APG** (1ᵉʳ passeur des Nuggets et 3ᵉ meilleur passeur de la NBA cette saison).
+
+**Analyse du débat** :
+Jokić est en lice pour son **3ᵉ titre de MVP** en 4 ans, avec des arguments solides :
+- **Double-double moyen** (26+ pts, 12+ rebonds, 9+ passes) : il est l'un des rares joueurs à maintenir cette ligne de stats.
+- **Efficacité** : 59% de tirs réussis (FG%) et 85% aux lancers francs (FT%).
+- **Impact clutch** : Denver compte sur lui pour les moments décisifs, avec une moyenne de **30+ points** dans les 5 dernières minutes des matchs serrés.
+
+**Comparaison historique** :
+Seuls **Wilt Chamberlain** et **Russell Westbrook** ont déjà atteint ces moyennes (pts, reb, ast) sur une saison complète. Jokić pourrait bien rejoindre ce club très fermé.
+
+**Débat ouvert** :
+Faut-il considérer Jokić comme le **meilleur joueur de la ligue** actuellement, devant des stars comme Luka Dončić ou Giannis Antetokounmpo ? Ses stats parlent, mais son équipe (1ᵉʳ de la conférence Ouest) aussi !
+
+*Source : NBA Advanced Stats (2023-2024), données officielles.*","SELECT p.player_name, s.points, s.rebounds, s.assists FROM stats s JOIN players p ON p.player_id = s.player_id WHERE p.player_name = 'Jokic' OR p.player_name = 'Nikola Jokić' ORDER BY s.points DESC LIMIT 1",True,ok,ok,"Route « rag » : comparaison SQL non applicable (le SQL n'est pas la voie principale). (ligne llm_* = générateur SQL en isolation, non sollicité en production).",needs_review
+SQL41,controle_refuse,Quel joueur a le pire pourcentage à 3 points cette saison ?,Contrôlé REFUSE par choix métier (réponse trompeuse). LLM peut répondre.,sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,"1. Joueur : Kris Murray, 3P% : 22.5, Tentatives à 3 pts : 117
+2. Joueur : Wendell Carter Jr,, 3P% : 23.4, Tentatives à 3 pts : 156
+3. Joueur : Ronald Holland II, 3P% : 23.8, Tentatives à 3 pts : 154
+4. Joueur : Isaiah Collier, 3P% : 24.9, Tentatives à 3 pts : 170
+5. Joueur : KJ Simpson, 3P% : 25.4, Tentatives à 3 pts : 130","SELECT p.player_name, s.three_point_pct, s.three_points_attempted FROM stats s JOIN players p ON p.player_id = s.player_id WHERE s.three_points_attempted >= 100 ORDER BY s.three_point_pct ASC LIMIT 10",True,ok,ok,Le LLM couvre une question que le contrôlé décline.,controlled_refuses
+SQL42,controle_refuse,Quelle est la moyenne d'âge des joueurs de la ligue ?,Contrôlé NON couvert (pas de moyenne d'âge). LLM peut calculer AVG(age).,sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,1. Average age : 26.152899824253076,SELECT AVG(p.age) AS average_age FROM players p,True,ok,ok,Le LLM couvre une question que le contrôlé décline.,controlled_refuses
+SQL43,llm_risque_semantique,Quel joueur a le meilleur pourcentage à 3 points ?,Sans indice de volume : risque que le LLM oublie le filtre >=100 tentatives.,sql,"Meilleurs tireurs à 3 points (minimum 100 tentatives) :
+1. Joueur : Seth Curry, 3P% : 45.6, Tentatives à 3 pts : 184
+2. Joueur : Zach LaVine, 3P% : 44.6, Tentatives à 3 pts : 533
+3. Joueur : Ty Jerome, 3P% : 43.9, Tentatives à 3 pts : 252
+4. Joueur : Taurean Prince, 3P% : 43.9, Tentatives à 3 pts : 336
+5. Joueur : Vít Krejčí, 3P% : 43.7, Tentatives à 3 pts : 205",,sql,"1. Joueur : Seth Curry, 3P% : 45.6, Tentatives à 3 pts : 184
+2. Joueur : Zach LaVine, 3P% : 44.6, Tentatives à 3 pts : 533
+3. Joueur : Ty Jerome, 3P% : 43.9, Tentatives à 3 pts : 252
+4. Joueur : Taurean Prince, 3P% : 43.9, Tentatives à 3 pts : 336
+5. Joueur : Vít Krejčí, 3P% : 43.7, Tentatives à 3 pts : 205","SELECT p.player_name, s.three_point_pct, s.three_points_attempted FROM stats s JOIN players p ON p.player_id = s.player_id WHERE s.three_points_attempted >= 100 ORDER BY s.three_point_pct DESC LIMIT 10",True,ok,ok,Les deux répondent : à vérifier (risque sémantique / ambiguïté).,needs_review
+SQL44,llm_risque_semantique,Quelle équipe est la plus défensive cette saison ?,defensive_rating : plus BAS = meilleur. Risque de tri dans le mauvais sens.,sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,"1. Équipe : Oklahoma City Thunder, Avg defensive rating : 104.08888888888889
+2. Équipe : Miami Heat, Avg defensive rating : 105.70526315789475
+3. Équipe : Portland Trail Blazers, Avg defensive rating : 107.33684210526316
+4. Équipe : Memphis Grizzlies, Avg defensive rating : 107.9
+5. Équipe : Indiana Pacers, Avg defensive rating : 108.25999999999999","SELECT t.team_name, AVG(s.defensive_rating) AS avg_defensive_rating FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code GROUP BY t.team_name ORDER BY avg_defensive_rating ASC LIMIT 10",True,ok,ok,Le LLM couvre une question que le contrôlé décline.,controlled_refuses
+SQL45,llm_risque_semantique,Quel joueur est le plus efficace offensivement ?,"'Efficace' = métrique ambiguë (true_shooting_pct, offensive_rating…).",sql,"Cette question chiffrée n'est pas encore prise en charge. Je peux calculer : les meilleurs marqueurs, rebondeurs, passeurs, contreurs, intercepteurs et joueurs à triple-doubles ; le meilleur pourcentage à 3 points (avec un volume minimum de tentatives) ; le total de points par équipe ; le nombre de joueurs par équipe ; le joueur le plus âgé ; et la fiche d'un joueur. Je préfère ne pas inventer de chiffre.",,sql,"1. Joueur : Alondes Williams, Équipe : Detroit Pistons, Offensive rating : 171.4
+2. Joueur : Terry Taylor, Équipe : Sacramento Kings, Offensive rating : 135.7
+3. Joueur : Harrison Ingram, Équipe : San Antonio Spurs, Offensive rating : 132.0
+4. Joueur : David Duke Jr,, Équipe : San Antonio Spurs, Offensive rating : 128.4
+5. Joueur : Lamar Stevens, Équipe : Memphis Grizzlies, Offensive rating : 128.2","SELECT p.player_name, t.team_name, s.offensive_rating FROM stats s JOIN players p ON p.player_id = s.player_id JOIN teams t ON t.team_code = p.team_code ORDER BY s.offensive_rating DESC LIMIT 10",True,ok,ok,Le LLM couvre une question que le contrôlé décline.,controlled_refuses
+SQL46,llm_meilleure_couverture,Combien d'équipes ont marqué plus de 9000 points au total ?,Agrégat + seuil sur le total par équipe. Contrôlé NON couvert.,sql,"Équipes ayant marqué le plus de points (total) :
+1. Équipe : Detroit Pistons, Points totaux : 10292
+2. Équipe : San Antonio Spurs, Points totaux : 10198
+3. Équipe : Cleveland Cavaliers, Points totaux : 10180
+4. Équipe : Milwaukee Bucks, Points totaux : 10016
+5. Équipe : Dallas Mavericks, Points totaux : 9970",,sql,"1. Teams count : 1
+2. Teams count : 1
+3. Teams count : 1
+4. Teams count : 1
+5. Teams count : 1",SELECT COUNT(DISTINCT t.team_name) AS teams_count FROM teams t JOIN players p ON p.team_code = t.team_code JOIN stats s ON s.player_id = p.player_id GROUP BY t.team_name HAVING SUM(s.points) > 9000,True,ok,ok,Les deux répondent mais les réponses semblent diverger (à vérifier).,different
+SQL47,llm_meilleure_couverture,Quel joueur a le meilleur ratio passes/ballons perdus avec au moins 200 passes ?,Ratio assists/turnovers avec filtre de volume. Contrôlé NON couvert.,sql,"Joueurs avec le moins de passes décisives :
+1. Joueur : Leonard Miller, Équipe : Minnesota Timberwolves, Passes décisives : 0
+2. Joueur : Tolu Smith, Équipe : Detroit Pistons, Passes décisives : 0
+3. Joueur : Trentyn Flowers, Équipe : Los Angeles Clippers, Passes décisives : 0
+4. Joueur : P,J, Tucker, Équipe : New York Knicks, Passes décisives : 0
+5. Joueur : Jalen Bridges, Équipe : Phoenix Suns, Passes décisives : 0",,sql,"1. Joueur : Tyrese Haliburton, Passes décisives : 672, Turnovers : 117, Assists per turnover : 5.743589743589744
+2. Joueur : Tyus Jones, Passes décisives : 429, Turnovers : 89, Assists per turnover : 4.820224719101123
+3. Joueur : Chris Paul, Passes décisives : 607, Turnovers : 131, Assists per turnover : 4.633587786259542
+4. Joueur : Jimmy Butler III, Passes décisives : 297, Turnovers : 72, Assists per turnover : 4.125
+5. Joueur : Mike Conley, Passes décisives : 320, Turnovers : 78, Assists per turnover : 4.102564102564102","SELECT p.player_name, s.assists, s.turnovers, (s.assists * 1.0 / s.turnovers) AS assists_per_turnover FROM stats s JOIN players p ON p.player_id = s.player_id WHERE s.assists >= 200 ORDER BY assists_per_turnover DESC LIMIT 10",True,ok,ok,Réponses cohérentes (même nombre et même nom propre détectés).,same
