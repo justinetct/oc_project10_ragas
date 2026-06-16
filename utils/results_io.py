@@ -1,7 +1,7 @@
 """utils/results_io.py — Lecture robuste des résultats d'évaluation (notebook + tests).
 
 Fonctions PURES (pandas + json), SANS appel API ni dépendance à la configuration
-Mistral : utilisées par le notebook d'analyse (`notebooks/02_compare_sql_modes.ipynb`)
+Mistral : utilisées par le notebook d'analyse (`notebooks/sql_modes_analysis.ipynb`)
 et par les tests. Si un fichier est absent, on renvoie None (ou un message clair) au
 lieu de lever une exception, pour que le notebook reste lisible même incomplet.
 """
