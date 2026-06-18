@@ -2,6 +2,7 @@
 
 ## Sommaire
 
+- [Résumé exécutif](#résumé-exécutif)
 1. [Contexte du projet](#1-contexte-du-projet)
 2. [Dataset utilisé](#2-dataset-utilisé)
 3. [Méthodologie d'évaluation](#3-méthodologie-dévaluation)
@@ -20,19 +21,40 @@
       - [Comparaison avant / après](#comparaison-avant--après)
       - [Robustesse des résultats](#robustesse-des-résultats)
       - [Limites restantes](#limites-restantes)
-7. [RAG v3 — hybride SQL](#7-passage-à-rag-v3--hybride-sql)
+6. [RAG v3 — SQL contrôlé (benchmark)](#6-rag-v3--sql-contrôlé-benchmark)
    - [Architecture générale](#architecture-générale)
    - [Données structurées et ingestion](#données-structurées-et-ingestion)
    - [Routage et sécurité](#routage-et-sécurité)
-   - [Résultats et choix retenus](#résultats-et-choix-retenus)
-   - [Expérimentation LLM→SQL](#expérimentation-llmsql)
+   - [Résultats du benchmark contrôlé](#résultats-du-benchmark-contrôlé)
+7. [RAG v4 — agent LLM→SQL (version finale)](#7-rag-v4--agent-llmsql-version-finale)
+   - [Principe : agent + SQL Tool](#principe--agent--sql-tool)
+   - [Garde-fous](#garde-fous)
+   - [Résultats sur E01–E15](#résultats-sur-e01e15)
+   - [Questions chiffrées non supportées](#questions-chiffrées-non-supportées)
+   - [Figures de synthèse (V1 → V4)](#figures-de-synthèse-v1--v4)
 8. [Limites, biais et risques](#8-limites-biais-et-risques)
 9. [Conclusion](#9-conclusion)
 10. [Annexes](#10-annexes)
     - [Annexe A — schéma SQLite détaillé](#annexe-a--schéma-sqlite-détaillé)
     - [Annexe B — exemple d'appel du SQL Tool](#annexe-b--exemple-dappel-du-sql-tool)
     - [Annexe C — exemples de requêtes SQL](#annexe-c--exemples-de-requêtes-sql)
-    - [Annexe D — résultats détaillés du mode LLM→SQL](#annexe-d--résultats-détaillés-du-mode-llmsql)
+    - [Annexe D — détail chiffré V3 vs V4 (route SQL)](#annexe-d--détail-chiffré-v3-vs-v4-route-sql)
+    - [Annexe E — exemples de réponses](#annexe-e--exemples-de-réponses)
+
+---
+
+## Résumé exécutif
+
+Ce projet améliore un assistant NBA qui répond à partir de documents (discussions Reddit) et de statistiques de saison (fichier Excel). Le travail s'est fait en quatre versions, chacune corrigeant la limite de la précédente :
+
+- **V1 — baseline RAG** : le système retrouve des passages puis rédige. Il marche, mais reste fragile, surtout sur les **questions chiffrées** (il reformule un extrait au lieu de calculer) : `faithfulness` ≈ 0,25.
+- **V2 — RAG contrôlé** : ajout de Pydantic, Pydantic AI et Logfire pour structurer et tracer la génération. Les réponses sont mieux ancrées dans les sources (`faithfulness` ≈ 0,36).
+- **V3 — SQL contrôlé (benchmark)** : les statistiques sont chargées dans une base SQLite interrogée par un **SQL Tool en lecture seule**, avec des requêtes issues d'un mapping figé. C'est un **benchmark sécurisé et stable**, pas la version finale ; il fait nettement progresser les questions chiffrées (`faithfulness` ≈ 0,51).
+- **V4 — agent LLM→SQL (version finale)** : le LLM détecte la question chiffrée, propose une requête SQL, appelle le SQL Tool, puis synthétise. C'est l'approche « agent + Tool » de l'énoncé, retenue comme version finale.
+
+**Résultat clé** : sur le jeu figé E01–E15, V4 est **au moins à parité** avec le benchmark V3 (`faithfulness` ≈ 0,54). Sur des questions chiffrées **impossibles** avec les données actuelles (ex. « 5 derniers matchs »), V4 est nettement meilleur : il **refuse honnêtement** au lieu de répondre à côté (`aspect_critic` 0,80 contre 0,20). Dans les deux modes, aucune statistique n'est inventée : toute requête reste validée et exécutée en lecture seule.
+
+**Limite principale** : les données sont agrégées sur la saison (pas de match par match). Les questions qui demandent ce détail (5 derniers matchs, domicile/extérieur, évolution) doivent être refusées — ce que V4 fait mieux que le benchmark.
 
 ---
 
@@ -44,11 +66,12 @@ Elle repose sur un pipeline RAG (*Retrieval-Augmented Generation*). Avant de ré
 
 Les sources sont mixtes : quatre PDF de discussions Reddit et un fichier Excel de statistiques de saison (`regular NBA.xlsx`).
 
-Le travail s'organise autour d'une progression en trois versions :
+Le travail s'organise autour d'une progression en quatre versions :
 
 1. **RAG v1 — baseline** : auditer le prototype initial et mesurer ses limites avec RAGAS ;
 2. **RAG v2 — contrôlé** : sécuriser le pipeline avec Pydantic, Pydantic AI et Logfire, puis vérifier si l'ancrage des réponses progresse ;
-3. **RAG v3 — hybride SQL** : ajouter une couche SQLite et un routage RAG / SQL / hybride / refus pour mieux traiter les questions chiffrées, tout en documentant les limites, les risques et les choix non retenus.
+3. **RAG v3 — SQL contrôlé (benchmark)** : ajouter une couche SQLite et un routage RAG / SQL / hybride / refus, avec des requêtes SQL **prédéfinies** — un benchmark stable et sécurisé pour les questions chiffrées ;
+4. **RAG v4 — agent LLM→SQL (version finale)** : laisser le LLM détecter la question chiffrée, proposer une requête SQL, appeler le SQL Tool en lecture seule, puis synthétiser la réponse. C'est la version qui correspond le mieux à l'attendu « agent + Tool » de l'énoncé, et celle retenue pour ce projet.
 
 Pour simplifier la lecture, les versions sont nommées ainsi :
 
@@ -56,7 +79,8 @@ Pour simplifier la lecture, les versions sont nommées ainsi :
 |---|---|---|
 | **RAG v1 — baseline** | pipeline RAG initial | `rag-v1-baseline` |
 | **RAG v2 — contrôlé** | ajout de Pydantic, Pydantic AI et Logfire | `rag-v2-controlled` |
-| **RAG v3 — hybride SQL** | ajout de SQLite et du SQL Tool pour les questions chiffrées | `rag-v3-sql-hybrid` |
+| **RAG v3 — SQL contrôlé (benchmark)** | SQLite + SQL Tool, requêtes prédéfinies (benchmark sécurisé) | `rag-v3-sql-hybrid` |
+| **RAG v4 — agent LLM→SQL (version finale)** | le LLM génère la requête, exécutée en lecture seule par le SQL Tool | `rag-v4-llm-sql-final` |
 
 
 ---
@@ -103,12 +127,12 @@ Des exemples par catégorie :
 
 ### Métriques
 
-RAGAS mesure la qualité des réponses d'un RAG. Quatre métriques sont utilisées, chacune entre 0 et 1 :
+RAGAS note la qualité des réponses d'un RAG, chaque métrique entre 0 et 1. Pour fixer les idées, prenons la question « Qui a le meilleur pourcentage à 3 points ? » :
 
-- **faithfulness** : mesure le risque d'hallucination. Une réponse est mieux notée si elle reste fidèle aux contextes récupérés, et moins bien notée si elle ajoute des informations qui ne sont pas dans les sources ;
-- **answer_relevancy** : mesure si la réponse répond bien à la question posée ;
-- **context_precision** : en général, la précision mesure la part des éléments retournés qui sont réellement pertinents. Ici, elle mesure si les contextes récupérés par FAISS sont utiles pour répondre à la question, ou s'ils ajoutent du bruit ;
-- **context_recall** : en général, le rappel mesure la part des éléments attendus qui ont bien été retrouvés. Ici, il mesure si les contextes récupérés couvrent les informations nécessaires pour construire la réponse attendue.
+- **faithfulness (fidélité)** : la réponse reste-t-elle strictement appuyée sur les sources ? C'est la métrique principale contre les hallucinations. Donner un nom ou un chiffre absent des sources la fait chuter.
+- **answer_relevancy (pertinence)** : la réponse répond-elle vraiment à la question posée ? Une réponse peut être fidèle mais inutile si elle parle d'autre chose.
+- **context_precision (précision du contexte)** : parmi les passages récupérés, combien sont vraiment utiles ? Une précision faible = beaucoup de bruit récupéré.
+- **context_recall (rappel du contexte)** : parmi les informations nécessaires, combien ont bien été retrouvées ? Un rappel faible = des informations importantes manquent.
 
 > Le juge qui attribue ces scores est lui-même un modèle de langage (`mistral-large-latest`). Ses scores varient d'un run à l'autre, même sans changer le pipeline. 
 
@@ -192,9 +216,19 @@ Cette première mesure sert de point de départ : elle évalue le prototype tel 
 | `context_precision` | 0,3622 | Précision faible côté récupération : une partie des contextes récupérés n'aide pas vraiment à répondre. |
 | `context_recall` | 0,4000 | Rappel faible côté récupération : les contextes ne couvrent pas toujours toutes les informations attendues. |
 
+> Ces chiffres sont issus d'un run unique du prototype. Les figures de synthèse (§7) utilisent, elles, la moyenne de plusieurs runs : de petits écarts entre les deux sont normaux (le juge RAGAS est lui-même un LLM, un peu variable).
+
 Le résultat principal est la faiblesse de la `faithfulness`. Le prototype répond, mais il s'autorise trop souvent à compléter ou reformuler au-delà des sources. Cette limite est particulièrement visible sur les questions chiffrées : FAISS peut retrouver un extrait proche, mais il ne sait pas calculer un maximum, un classement ou une moyenne.
 
 Cette baseline fixe donc deux objectifs pour les versions suivantes : mieux encadrer la génération, puis ajouter une brique structurée pour les calculs sur les statistiques NBA.
+
+#### Fidèle, pertinent, correct : trois cas concrets
+
+Sur « Qui a le meilleur pourcentage à 3 points ? », trois réponses possibles montrent ce que mesurent les métriques :
+
+- *Fidèle mais peu pertinente* : « Les fans discutent beaucoup du tir à 3 points. » — appuyée sur un extrait réel, mais elle ne répond pas (fidélité ↑, pertinence ↓).
+- *Pertinente mais infidèle* : « Steve Nash, 49 %. » — répond bien à la question, mais ce joueur n'est même pas dans les données : c'est une hallucination (pertinence ↑, fidélité ↓).
+- *Correcte* (visée par V3 et V4) : « Seth Curry, 45,6 % (au moins 100 tentatives). » — exacte **et** appuyée sur la base (les deux ↑).
 
 ---
 
@@ -289,9 +323,11 @@ L'évaluation a été relancée 5 fois pour chaque version du pipeline, dans les
 
 ---
 
-## 7. RAG v3 — hybride SQL
+## 6. RAG v3 — SQL contrôlé (benchmark)
 
 Cette version complète le RAG texte avec un accès structuré aux statistiques. Le fichier Excel est chargé dans une base SQLite, interrogée avec un SQL Tool LangChain en lecture seule. Le routeur oriente chaque question vers le bon traitement : RAG texte, SQL, réponse hybride ou refus hors périmètre.
+
+Ici, les requêtes SQL sont **prédéfinies** (mapping figé à colonnes sur liste blanche, aucun SQL écrit par le LLM). Ce mode `controlled` n'est pas la version finale du projet : il sert de **benchmark sécurisé et déterministe** — un point de comparaison stable pour la version finale (RAG v4 — agent LLM→SQL, §7). Il établit aussi la brique réutilisée par v4 : le SQL Tool en lecture seule.
 
 ### Architecture générale
 
@@ -386,13 +422,13 @@ Le module `utils/router.py` classe chaque question vers quatre chemins, utilisé
 | `hybrid` | chiffre + interprétation | SQL d'abord, puis rédaction LLM |
 | `out_of_scope` | hors NBA / hors sources | refus poli, aucun appel externe |
 
-Pour les questions chiffrées, le mode par défaut (`controlled`) s'appuie sur des cas connus : classement, statistique joueur, filtre équipe ou seuil numérique. Une requête SQL prédéfinie est ensuite exécutée en lecture seule par le SQL Tool.
+Pour les questions chiffrées, le mode contrôlé (`controlled`, le benchmark de cette version) s'appuie sur des cas connus : classement, statistique joueur, filtre équipe ou seuil numérique. Une requête SQL prédéfinie est ensuite exécutée en lecture seule par le SQL Tool. La version finale (v4, §7) lèvera la contrainte des cas prédéfinis.
 
 Si la donnée demandée n'existe pas dans la base, le système refuse de calculer et explique la limite. L'application et l'évaluation utilisent la même fonction `answer_question()`, donc les scores RAGAS mesurent le même comportement que l'interface.
 
 Le jeu figé E01–E15 reste la référence officielle. Le jeu étendu SQL sert seulement à analyser plus finement les cas chiffrés.
 
-### Résultats et choix retenus
+### Résultats du benchmark contrôlé
 
 #### Avant / après routage
 Trois conditions sont comparées sur le jeu figé E01–E15, avec les mêmes métriques et le même juge que les évaluations précédentes : RAG texte seul avant routage SQL, routage avec hybride `sql_only`, routage avec hybride `sql_with_rag_context`.
@@ -402,7 +438,7 @@ Comme le juge RAGAS varie d'un run à l'autre, chaque condition a été relancé
 | Condition | faithfulness | answer_relevancy | context_precision | context_recall | Lecture |
 |---|---:|---:|---:|---:|---|
 | RAG texte seul (avant routage SQL) | 0,356 | 0,504 | 0,423 | 0,407 | Point de comparaison : le RAG seul reste fragile sur les questions chiffrées. |
-| Routage · hybride `sql_only` | 0,509 | 0,629 | 0,547 | 0,638 | Meilleur compromis : les réponses chiffrées s'appuient sur un fait SQL exact. |
+| Routage · hybride `sql_only` | 0,509 | 0,629 | 0,547 | 0,638 | Meilleure variante contrôlée : les réponses chiffrées s'appuient sur un fait SQL exact. |
 | Routage · hybride `sql_with_rag_context` | 0,505 | 0,637 | 0,535 | 0,624 | Variante testée, sans gain clair par rapport à `sql_only`. |
 
 Le routage améliore les quatre métriques, surtout la pertinence (`answer_relevancy` 0,50 → 0,63–0,64) et la récupération de contexte. Le gain vient principalement des questions chiffrées : elles ne dépendent plus d'extraits approximatifs, mais d'une requête SQL.
@@ -418,58 +454,105 @@ Lecture par catégorie (`faithfulness`) :
 
 La distribution des routes sur E01–E15 confirme le comportement attendu : 5 `rag`, 6 `sql`, 2 `hybrid`, 2 `out_of_scope`.
 
-#### Choix du mode hybride
+#### Variantes contrôlées (note)
 
-Les deux variantes ne changent que les questions `hybrid` : `sql_only` rédige à partir du seul chiffre SQL ; `sql_with_rag_context` ajoute quelques extraits FAISS pour la partie qualitative, avec une consigne explicite : les chiffres SQL font foi.
+Deux variantes du mode contrôlé ont été regardées sur les questions `hybrid` : `sql_only` (rédaction à partir du seul chiffre SQL) et `sql_with_rag_context` (quelques extraits FAISS en plus, les chiffres SQL faisant foi). L'écart entre les deux reste dans le bruit du juge RAGAS ; `sql_only` est gardé comme réglage par défaut du benchmark (plus simple et plus stable), `sql_with_rag_context` reste activable par configuration (`HYBRID_MODE=sql_with_rag_context`). Cette comparaison interne sert seulement à cadrer le benchmark, pas à désigner une version finale.
 
-Les écarts observés restent limités par rapport au bruit du juge RAGAS. 
-
-> Le mode `sql_only` est donc retenu par défaut : il est plus simple, plus stable et moins coûteux. 
-
-Le mode `sql_with_rag_context` reste disponible par configuration (`HYBRID_MODE=sql_with_rag_context`) pour les cas où l'on veut enrichir l'interprétation avec des contextes texte.
-
-### Expérimentation LLM→SQL
-
-Un mode `llm_sql` a aussi été testé : le LLM propose une requête SQL, puis le SQL Tool la valide et l'exécute en lecture seule. Le LLM n'a donc jamais accès directement à la base.
-
-Ce mode améliore la souplesse sur certaines formulations, mais il n'est pas retenu comme choix final. Le mode contrôlé reste plus stable, déterministe et plus facile à vérifier. Le projet garde donc `controlled` + `sql_only` par défaut.
-
-Les résultats détaillés de cette comparaison sont placés en [annexe D](#annexe-d--résultats-détaillés-du-mode-llmsql).
-
-#### Figures de synthèse (preuves visuelles)
-
-Les figures ci-dessous consolident les résultats discutés plus haut. Elles sont régénérées **sans appel API** à partir de `evaluation/results/variance_runs/` (`poetry run python scripts/make_report_figures.py`). **Chaque mode — baseline RAG incluse — est moyenné sur ses 5 runs de variance** (barres d'erreur = écart-type inter-runs) : sur un run unique, des moyennes proches coïncidaient par hasard — par exemple un `context_recall` identique sur les trois modes routés — alors que la moyenne sur 5 runs les sépare. Les petits écarts avec les tableaux ci-dessus relèvent de la variance du juge entre runs.
-
-**Scores globaux par mode** — repère d'ensemble (baseline RAG → SQL contrôlé → hybride → LLM→SQL). Ces scores doivent être lus avec les tableaux précédents, car le jeu figé mélange des questions documentaires, chiffrées, mixtes et hors sujet.
-
-> À noter : `controlled_hybrid` ne diffère de `controlled_sql` que sur les 2 questions hybrides (E05, E06) — sur les 13 autres, le contexte récupéré est identique ; l'écart global entre ces deux barres tient donc surtout au bruit du juge, pas à un effet large du « + contexte RAG ».
-
-![Scores RAGAS globaux par mode](img/ragas_global_scores.png)
-
-**Gains vs baseline RAG, hors questions hors sujet** — l'apport du SQL par métrique. Le gain de fidélité et de contexte est net, concentré sur les questions chiffrées et bruitées (détail par catégorie dans le notebook).
-
-![Gains RAGAS vs baseline RAG, hors questions hors sujet](img/ragas_gains_vs_baseline.png)
-
-**Route SQL — contrôlé vs LLM→SQL (moyenne ± écart-type, 5 runs)** — le duel central. `llm_sql` atteint la parité en `faithfulness` ; le contrôlé est plus stable (écart-type ≈ 0) et reste le mode par défaut.
-
-![Route SQL — contrôlé vs LLM→SQL, 5 runs](img/ragas_sql_route_x5.png)
-
-**Métriques complémentaires** — `aspect_critic` = 1,0 pour les deux modes (aucune statistique absente inventée) ; `answer_correctness` reste modérée (≈ 0,50), à lire avec prudence.
-
-![Métriques complémentaires — answer_correctness et aspect_critic](img/ragas_extra_metrics.png)
-
-#### Limites du routage actuel
+#### Limites du routage contrôlé
 
 - routage par règles : robuste sur le jeu testé, mais une question très déformée peut être mal classée (E12 reste en `rag`) ;
-- en mode contrôlé (défaut), la couverture SQL est bornée aux requêtes prédéfinies ; le mode `llm_sql` couvre davantage de questions composées. Ce qui est absent de la base (ex. splits domicile/extérieur) reste signalé comme indisponible dans les deux modes ;
-- RAGAS juge mal deux familles de réponses correctes : les refus (hors-sujet, note 0 par construction) et les réponses interprétatives des questions mixtes ; le comparatif chiffré est donc complété d'une lecture qualitative des réponses, en particulier sur les questions mixtes.
+- en mode contrôlé, la couverture SQL est **bornée aux requêtes prédéfinies** : chaque nouveau type de question chiffrée demande d'écrire une règle. C'est précisément la limite que lève la version finale (RAG v4) ;
+- RAGAS juge mal deux familles de réponses correctes : les refus (hors-sujet, note 0 par construction) et les réponses interprétatives des questions mixtes ; le comparatif chiffré est donc complété d'une lecture qualitative.
+
+## 7. RAG v4 — agent LLM→SQL (version finale)
+
+Le mode contrôlé (v3) répond bien aux questions prévues, mais il faut écrire une règle pour chaque nouveau cas. La version finale change d'approche : c'est **le LLM qui interprète la question chiffrée, propose une requête SQL, appelle le SQL Tool, puis synthétise la réponse**. C'est l'attendu « agent + Tool » de l'énoncé de l'étape 2. C'est désormais le **mode par défaut** (`SQL_GENERATION_MODE=llm`) ; le mode contrôlé reste disponible comme benchmark (`SQL_GENERATION_MODE=controlled`).
+
+### Principe : agent + SQL Tool
+
+Le pipeline (`utils/sql/llm_sql_generator.py` puis `utils/sql/llm_sql_pipeline.py`) enchaîne trois étapes :
+
+1. **Décision** : un agent Pydantic AI reçoit la question et le schéma de la base, et renvoie une sortie **typée** (`LlmSqlDecision` : `should_query`, `sql`, `reason`, `expected_result_type`). S'il juge la question non couverte, il répond `should_query=false` avec un motif.
+2. **Validation** : la requête proposée est revalidée statiquement (lecture seule) **avant toute exécution** — le même contrôle que le mode contrôlé.
+3. **Exécution + synthèse** : la requête validée est exécutée par le SQL Tool sécurisé (lecture seule, plafond de lignes), puis la réponse est mise en forme en français à partir des seules lignes retournées.
+
+Le LLM ne touche jamais la base : il ne fait que **proposer** un texte de requête. Toute exécution passe par le SQL Tool.
+
+### Garde-fous
+
+La souplesse du LLM est entièrement encadrée — la confiance dans le texte généré est nulle :
+
+- **lecture seule stricte** : `SELECT`/`WITH` uniquement, une seule requête, mots-clés d'écriture/administration refusés (`INSERT`, `UPDATE`, `DROP`, `PRAGMA`…) ;
+- **connexion en `mode=ro`** : même une requête qui passerait les filtres ne pourrait pas écrire ;
+- **refus honnête** si la donnée n'existe pas (`should_query=false`) — aucun chiffre inventé ;
+- **colonnes / tables inexistantes bloquées** : une requête qui invente une colonne échoue à l'exécution et l'assistant se rabat sur un refus (observé : le LLM a généré `rebounds_per_game`, colonne absente → `no such column` → refus, sans afficher de chiffre) ;
+- **plafond de lignes** imposé à l'exécution, même si le LLM l'oublie.
+
+Le module est couvert par des tests sans appel API (`tests/test_llm_sql_generator.py`).
+
+### Résultats sur E01–E15
+
+Sur la route `sql` du jeu figé (moyenne ± écart-type sur 5 runs), le LLM→SQL atteint **au moins la parité** avec le benchmark contrôlé, avec un léger avantage en fidélité :
+
+![Route « sql » — V3 contrôlé vs V4 LLM→SQL, 5 runs](img/ragas_sql_route_x5.png)
+
+Globalement sur les 15 questions, V4 est au niveau de V3 (`faithfulness` ≈ 0,54 contre 0,51 ; autres métriques dans le bruit du juge). Le détail chiffré est en [annexe D](#annexe-d--détail-chiffré-v3-vs-v4-route-sql). Le contrôlé reste un peu plus **stable** (écart-type plus faible) : c'est la contrepartie attendue d'un mapping figé.
+
+#### Lecture par catégorie (V1 → V4)
+
+Détail par type de question (moyenne sur 5 runs, jeu figé E01–E15). Deux catégories se lisent à part : **hors-sujet** est noté 0 dès qu'il y a routage (le refus est correct, mais RAGAS le note mal car aucun contexte n'est cité), et **bruitée** part de très bas en V1/V2.
+
+![Scores RAGAS par catégorie et par version (V1 → V4)](img/ragas_category_heatmaps.png)
+
+Lecture par métrique :
+
+- **faithfulness** : gain concentré sur les chiffrées (0,31 → 0,90) et les bruitées à intention chiffrée ; V4 ≥ V3 sur chiffrées et complexes.
+- **answer_relevancy** : élevée et stable sur simple/complexe ; V3/V4 redressent les mixtes ; la baisse en V2 sur les chiffrées (réponses plus ancrées, moins directes) est rattrapée par le SQL.
+- **context_precision** : bond sur les mixtes (0,37 → 1,00) et les chiffrées (→ 0,80) grâce au contexte SQL exact.
+- **context_recall** : progression sur les chiffrées (0,40 → 0,93/0,85) et les mixtes (0 → 0,50).
+
+En résumé, les gains de V3 et V4 par rapport au RAG seul se concentrent là où le RAG échouait (chiffrées, mixtes, bruitées à intention chiffrée), tandis que les questions documentaires (simple, complexe) restent à un bon niveau et que les hors-sujet sont volontairement refusées.
+
+### Questions chiffrées non supportées
+
+Une évaluation complémentaire cible cinq questions chiffrées **impossibles avec le schéma actuel** (statistiques de saison, sans match par match) : meilleur 3P% sur les 5 derniers matchs ; rebonds domicile/extérieur ; évolution de Nikola Jokić sur ses 5 derniers matchs ; rebonds par match Jokić / LeBron ; joueur qui a le plus progressé. Le détail figure dans `evaluation/results/sql_modes_unsupported_analysis.md`.
+
+Exemple sur « Quel joueur a le meilleur pourcentage à 3 points sur ses 5 derniers matchs ? » :
+
+- **V3 contrôlé** répond à côté, sur la saison : « Meilleurs tireurs à 3 points (min. 100 tentatives) : 1. Seth Curry 45,6 %… » — des chiffres réels, mais pas la question posée.
+- **V4 LLM→SQL** refuse honnêtement : « Cette question chiffrée n'a pas pu être traitée de façon fiable : la base ne contient pas de données match par match… »
+
+Résultat (lecture métier + RAGAS `aspect_critic`) :
+
+| Indicateur | V3 — SQL contrôlé | V4 — LLM→SQL |
+|---|---|---|
+| Réponses à côté (question impossible traitée comme une autre) | **3 / 5** | 0 / 5 |
+| Refus correct ou erreur contenue | 1 / 5 | **4 / 5** |
+| Chiffre inventé | 0 / 5 | 0 / 5 |
+| `aspect_critic` (respect des limites, 1,0 = idéal) | **0,20** | **0,80** |
+
+![Questions non supportées — aspect_critic V3 vs V4](img/ragas_unsupported_aspect.png)
+
+Insight important sur les métriques : les **4 métriques RAGAS classiques peuvent récompenser le contrôlé** parce qu'il répond avec des chiffres réels — même quand il répond à côté — alors qu'elles **pénalisent un refus** (pas de contexte ni de réponse à juger). Elles mesurent « la réponse est-elle ancrée ? », pas « fallait-il répondre ? ». Il faut donc les compléter par `aspect_critic` et une lecture métier. Conclusion de cette comparaison : le risque principal du contrôlé n'est **pas l'hallucination, mais la réponse à côté** ; le LLM→SQL, encadré par le SQL Tool en lecture seule, détecte mieux les limites du schéma.
+
+### Figures de synthèse (V1 → V4)
+
+Les figures ci-dessous consolident la progression. Elles sont régénérées **sans appel API** (`poetry run python scripts/make_report_figures.py`), chaque version étant moyennée sur ses runs de variance (barres d'erreur = écart-type).
+
+**Scores RAGAS par version (V1 → V4)** — repère d'ensemble. À lire avec les tableaux précédents, car le jeu figé mélange des questions documentaires, chiffrées, mixtes et hors sujet.
+
+![Scores RAGAS par version (V1 → V4)](img/ragas_global_scores.png)
+
+**Apport du SQL par rapport au RAG contrôlé (V2)**, hors questions hors sujet — le gain de fidélité et de contexte est net, concentré sur les questions chiffrées et bruitées.
+
+![Apport du SQL vs RAG contrôlé](img/ragas_gains_vs_baseline.png)
 
 ## 8. Limites, biais et risques
 
 Plusieurs limites restent à garder en tête.
 
 - **Données NBA** : le fichier Excel contient des statistiques agrégées sur la saison. Il ne contient pas de matchs individuels, de 5 derniers matchs ni de découpage domicile / extérieur. Les questions de ce type doivent donc être refusées ou reformulées avec une alternative sur la saison.
-- **Routage et SQL** : le mode contrôlé est stable mais limité aux intentions prévues. Le mode `llm_sql` couvre davantage de formulations, mais il reste plus variable et peut produire une requête valide mais mal adaptée à la question. C’est pour cela que toutes les requêtes passent par validation et lecture seule.
+- **Routage et SQL** : le mode contrôlé (benchmark) est stable mais limité aux intentions prévues. Le mode `llm_sql` (version finale) couvre davantage de formulations et détecte mieux les limites du schéma, mais il reste plus variable et peut produire une requête valide mais mal adaptée — voire une colonne inexistante. C’est pour cela que toutes les requêtes, contrôlées ou générées, passent par validation et lecture seule (la requête fautive est alors bloquée, pas exécutée).
 - **Corpus Reddit** : les PDF viennent de captures et de texte extrait avec un bruit possible lié à l'OCR. Ils contiennent des fautes et des opinions de fans. Le système peut résumer ces discussions, mais elles ne représentent pas toute la NBA.
 - **Évaluation RAGAS** : le jeu figé contient 15 questions, dont peu de questions SQL. Le juge LLM varie d’un run à l’autre et note mal certains refus pourtant corrects. Les résultats sont donc lus comme des tendances, avec des runs répétés quand c’est nécessaire.
 - **Généralisation** : les résultats valent pour ce corpus, ce modèle et ces données. Un changement de modèle, de saison NBA ou de documents demanderait de relancer l’évaluation.
@@ -480,19 +563,11 @@ Les pistes d’amélioration réalistes seraient d’ajouter des données match 
 
 ## 9. Conclusion
 
-Le prototype RAG fonctionne : il indexe les documents, retrouve des contextes et répond aux questions.
+Le projet a avancé en quatre versions (détail chiffré dans le résumé exécutif et les sections §4 à §7). V1 (RAG seul) était fragile sur les questions chiffrées ; V2 (Pydantic / Pydantic AI / Logfire) a amélioré l'ancrage ; V3 a ajouté un **benchmark SQL contrôlé**, stable et sécurisé, qui a fait progresser les questions chiffrées et fourni les garde-fous réutilisés ensuite. **V4 — agent LLM→SQL est la version finale retenue** : conforme à l'énoncé « agent + Tool », au moins à parité avec le benchmark sur E01–E15 et meilleure sur les questions non prévues.
 
-L'évaluation RAGAS a montré ses limites : ancrage faible (`faithfulness` à 0,25) et questions chiffrées fragiles.
+Le LLM→SQL n'est **pas « libre »** : toutes ses requêtes sont validées et exécutées par le SQL Tool en **lecture seule** (refus si la donnée n'existe pas, colonnes inexistantes bloquées, aucune écriture). Le mode contrôlé reste utile comme **référence stable**, mais il demande une règle de plus à chaque évolution du schéma : le LLM→SQL est donc plus adapté à un **usage réel évolutif** (par exemple si l'on ajoute un jour des données match par match).
 
-RAG v2 — contrôlé renforce le pipeline avec Pydantic, Pydantic AI et Logfire. Après ces changements, la `faithfulness` moyenne passe de 0,25 à 0,36 sur 5 runs, avec une baisse de la pertinence directe. C'est une tendance à lire avec prudence : le juge varie d'un run à l'autre.
-
-RAG v3 — hybride SQL utilise un routage en quatre chemins : RAG texte pour le documentaire, requêtes SQL prédéfinies pour le chiffré, réponse hybride pour les questions mixtes, refus hors périmètre. Sur le jeu figé E01–E15, le routage fait passer la `faithfulness` moyenne de 0,36 à 0,51 et la pertinence des réponses de 0,50 à 0,63–0,64, avec des gains concentrés exactement là où le RAG seul échouait : questions chiffrées et questions bruitées à intention chiffrée.
-
-Sur les questions chiffrées, le SQL améliore donc nettement le RAG seul. Le mode contrôlé est conservé par défaut : plus stable, déterministe et plus facile à vérifier. Les limites des données sont signalées plutôt que comblées par des chiffres inventés (`aspect_critic` = 1,0 dans les comparaisons complémentaires). Le mode `llm_sql`, détaillé en annexe, confirme qu'une génération SQL par le modèle est possible, mais reste expérimental.
-
-Une variante de prompt plus strict est aussi disponible (`RAG_PROMPT_MODE=strict`). Elle améliore l'ancrage des réponses, mais réduit la pertinence sur les questions de discussion. Le prompt prototype reste donc le défaut, et le prompt strict reste activable par configuration.
-
-La prochaine étape serait d'élargir la couverture des questions chiffrées et de remplacer le routage par règles par un classifieur plus robuste si le besoin apparaît à l'usage, en gardant le même principe de sécurité : toute requête, contrôlée ou générée, passe par le SQL Tool en lecture seule.
+Une variante de prompt plus strict est aussi disponible (`RAG_PROMPT_MODE=strict`) : elle améliore l'ancrage mais réduit la pertinence sur les discussions, donc le prompt prototype reste le défaut. La suite naturelle serait d'ajouter des données match par match et, si besoin, de remplacer le routage par règles par un classifieur plus robuste — en gardant le même principe : toute requête passe par le SQL Tool en lecture seule.
 
 > **Ce qui est exclu du périmètre**
 > - pas de fine-tuning du modèle ;
@@ -576,23 +651,33 @@ WHERE s.three_points_attempted >= 100
 ORDER BY s.three_point_pct DESC LIMIT 5;
 ```
 
-### Annexe D — résultats détaillés du mode LLM→SQL
+### Annexe D — détail chiffré V3 vs V4 (route SQL)
 
-Le mode `llm_sql` a été testé pour mesurer l'intérêt d'une génération de requêtes SQL par le modèle. Il ne remplace pas le mode contrôlé, mais permet de vérifier si une approche plus souple peut atteindre un niveau comparable.
-
-Trois conditions sont comparées sur les questions chiffrées : `controlled_sql`, `controlled_hybrid` (chiffre SQL + contextes RAG sur les questions hybrides) et `llm_sql`. Le juge RAGAS étant bruité, chaque condition est lancée 5 fois (`scripts/run_all_ragas.sh`) puis moyennée (`scripts/aggregate_variance_runs.py`).
+Comparaison du benchmark contrôlé (V3) et de la version finale LLM→SQL (V4) sur les questions chiffrées du jeu figé. Le juge RAGAS étant bruité, chaque condition est lancée 5 fois (`scripts/run_all_ragas.sh`) puis moyennée (`scripts/aggregate_variance_runs.py`).
 
 Route SQL — moyenne ± écart-type sur 5 runs :
 
-| Métrique | SQL contrôlé | LLM→SQL |
+| Métrique | V3 — SQL contrôlé | V4 — LLM→SQL |
 |---|---|---|
 | `faithfulness` | 0,860 ± 0,015 | 0,910 ± 0,028 |
 | `answer_relevancy` | 0,653 ± 0,001 | 0,630 ± 0,004 |
 | `context_precision` | 0,667 ± 0,000 | 0,667 ± 0,000 |
 | `context_recall` | 0,778 ± 0,000 | 0,711 ± 0,091 |
 
-Après correction du format des réponses, affichage d'un top 5 et ajout des exemples few-shot, le mode `llm_sql` atteint la parité avec le SQL contrôlé sur la route SQL. Le SQL contrôlé reste plus stable (écart-type proche de 0) : il est donc conservé comme mode par défaut.
+Après correction du format des réponses (affichage d'un top 5) et ajout des exemples few-shot, V4 atteint au moins la **parité** avec le benchmark contrôlé sur la route SQL, avec un léger avantage en `faithfulness`. V3 reste un peu plus **stable** (écart-type proche de 0) : c'est sa valeur comme benchmark, pas un argument pour en faire la version finale.
 
-`controlled_hybrid` ne modifie que les questions hybrides (ajout de contextes RAG). Les écarts avec `controlled_sql` restent limités ; `controlled_sql` est gardé comme référence par défaut, et `controlled_hybrid` reste disponible par configuration.
+Une variante contrôlée hybride (`controlled_hybrid` : chiffre SQL + contextes RAG sur les questions mixtes) a aussi été regardée ; ses écarts avec `controlled_sql` restent dans le bruit du juge (voir §6).
 
-**Métriques complémentaires.** Deux mesures optionnelles ont été ajoutées en lecture complémentaire. `answer_correctness` reste modérée (≈ 0,50 pour les deux modes) : les refus et les limites de données sont difficiles à noter avec une réponse de référence classique. `aspect_critic` vaut 1,0 pour les deux modes, ce qui indique que les réponses respectent les limites des données — aucune statistique absente n'est inventée. Le détail figure dans `notebooks/sql_modes_analysis.ipynb`.
+**Métriques complémentaires.** Sur E01–E15, `aspect_critic` vaut 1,0 pour V3 comme V4 (aucune statistique absente inventée) et `answer_correctness` reste modérée (≈ 0,50). C'est sur le jeu complémentaire « non supporté » (§7) que `aspect_critic` sépare nettement les deux modes (0,20 contre 0,80). Le détail figure dans `notebooks/sql_modes_analysis.ipynb` et `evaluation/results/sql_modes_unsupported_analysis.md`.
+
+### Annexe E — exemples de réponses
+
+Quelques cas concrets, pour rendre les scores plus parlants (réponses réelles, abrégées) :
+
+| Question | Comportement |
+|---|---|
+| « Quel joueur a marqué le plus de points ? » | V1/V2 peuvent reformuler un extrait sans vérifier le maximum ; V3/V4 calculent en SQL → Shai Gilgeous-Alexander, 2 485 points. |
+| « Qui a le meilleur pourcentage à 3 points ? » | V3/V4 appliquent un filtre de volume (≥ 100 tentatives) → Seth Curry, 45,6 %, ce qui évite un joueur à 100 % sur 1 tir. |
+| « …sur ses 5 derniers matchs ? » | V3 contrôlé répond sur la saison (à côté) ; V4 LLM→SQL refuse en expliquant l'absence de données match par match. |
+| « Quelle est la recette de la ratatouille ? » | Hors sujet : refus poli, aucune réponse cuisine. |
+| « Que disent les fans Reddit sur le tournoi play-in ? » | Route RAG texte : synthèse des discussions, sans calcul. |
