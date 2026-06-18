@@ -1,4 +1,4 @@
-"""Tests du mode expérimental « SQL généré par le LLM » (utils/sql/llm_sql_*).
+"""Tests du mode LLM→SQL et de ses garde-fous de génération SQL (utils/sql/llm_sql_*).
 
 Aucun appel API Mistral : la génération du LLM est SIMULÉE (monkeypatch de
 `generate_sql`). On vérifie :
@@ -102,12 +102,16 @@ def test_validate_accepts_read_only_sql():
     ).startswith("WITH")
 
 
-# --- 3. Mode contrôlé conservé par défaut -------------------------------------
+# --- 3. Mode par défaut : LLM→SQL (approche recommandée) ----------------------
 
-def test_default_sql_generation_mode_is_controlled():
-    """Le mode de production par défaut reste le SQL contrôlé (non LLM)."""
-    assert config.SQL_GENERATION_MODE == "controlled"
-    assert router.SQL_GENERATION_MODE == "controlled"
+def test_default_sql_generation_mode_is_llm():
+    """Le défaut code de la génération SQL est `llm` (approche agent + Tool retenue).
+
+    On lit `config` (résolu à l'import), que la fixture autouse de mode contrôlé ne
+    touche pas — le test reflète donc bien le défaut code, pas le réglage des tests.
+    Le mode `controlled` reste un benchmark sécurisé, activable par configuration.
+    """
+    assert config.SQL_GENERATION_MODE == "llm"
 
 
 # --- Base NBA temporaire (pour les exécutions du pipeline / routeur) -----------

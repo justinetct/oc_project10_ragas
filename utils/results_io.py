@@ -207,6 +207,34 @@ def load_baseline_variance_csvs():
     return frames
 
 
+def load_baseline_variance_summaries():
+    """Résumés des 5 runs de variance de la baseline RAG = V2 (voir BASELINE_VARIANCE_RUNS)."""
+    summaries = []
+    for name in BASELINE_VARIANCE_RUNS:
+        summary = load_summary(os.path.join(VARIANCE_DIR, f"{name}_summary.json"))
+        if summary is not None:
+            summaries.append(summary)
+    return summaries
+
+
+# La V1 (prototype initial, ANCIEN pipeline de génération) a elle aussi 5 runs de variance
+# (jeu E01–E15, faithfulness ≈ 0,25) : ref_old_pipeline_HEAD (le run de tête) + oldrun1..4.
+# ref_old_pipeline_HEAD n'a qu'un résumé JSON (pas de CSV par question) -> on agrège la V1 à
+# partir des RÉSUMÉS. Sert de point de départ « V1 » dans la progression V1 → V4 ; à NE PAS
+# confondre avec la baseline contrôlée (= V2, BASELINE_VARIANCE_RUNS, faithfulness ≈ 0,35).
+OLD_PIPELINE_VARIANCE_RUNS = ["ref_old_pipeline_HEAD", "oldrun1", "oldrun2", "oldrun3", "oldrun4"]
+
+
+def load_old_pipeline_variance_summaries():
+    """Résumés des 5 runs de variance V1 (prototype initial ; voir OLD_PIPELINE_VARIANCE_RUNS)."""
+    summaries = []
+    for name in OLD_PIPELINE_VARIANCE_RUNS:
+        summary = load_summary(os.path.join(VARIANCE_DIR, f"{name}_summary.json"))
+        if summary is not None:
+            summaries.append(summary)
+    return summaries
+
+
 def _csv_run_means(frames, exclude_categories=()):
     """Pour chaque run : moyenne par métrique (catégories exclues). -> liste de dicts."""
     exclude = set(exclude_categories)

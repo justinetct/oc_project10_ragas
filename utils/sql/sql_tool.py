@@ -78,7 +78,7 @@ def assert_read_only(query):
 
     Source de vérité unique des garde-fous : seul ce contrôle décide si une requête
     est acceptable. Il est utilisé à la fois par `run_read_only_query` (exécution
-    contrôlée) et par le mode expérimental « SQL généré par le LLM »
+    contrôlée) et par le mode LLM→SQL « SQL généré par le LLM »
     (`utils/sql/llm_sql_generator.py`), qui valide ainsi la requête produite par le
     LLM avant toute exécution.
 

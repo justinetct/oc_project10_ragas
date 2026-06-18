@@ -1,4 +1,4 @@
-"""utils/sql/llm_sql_pipeline.py — Orchestration du mode expérimental LLM→SQL.
+"""utils/sql/llm_sql_pipeline.py — Orchestration du mode LLM→SQL (mode par défaut).
 
 Enchaîne, pour une question :
 1. GÉNÉRATION  : le LLM propose une décision structurée (`llm_sql_generator.generate_sql`) ;
@@ -151,7 +151,7 @@ def run_llm_sql(question, limit=LLM_SQL_DISPLAY_LIMIT):
     """Exécute le pipeline LLM→SQL pour `question` et retourne un `LlmSqlRunResult`.
 
     Robuste : toute erreur (génération, validation, exécution) est capturée et tracée,
-    jamais propagée — le mode expérimental ne doit pas faire tomber l'assistant. Le nombre
+    jamais propagée — le mode LLM→SQL ne doit pas faire tomber l'assistant. Le nombre
     de lignes récupérées est imposé à l'exécution (`limit`) APRÈS retrait du `LIMIT` final
     du LLM : on présente ainsi toujours un classement (top 5), comme le mode contrôlé.
     """
@@ -174,6 +174,11 @@ def run_llm_sql(question, limit=LLM_SQL_DISPLAY_LIMIT):
 
     if not decision.should_query:
         # Refus assumé du LLM : rien à valider ni à exécuter.
+        result.answer = (
+            "Cette question chiffrée n'a pas pu être traitée de façon fiable : "
+            f"{decision.reason}"
+        )
+        result.result_preview = f"Limite détectée : {decision.reason}"
         return result
 
     result.sql = decision.sql

@@ -1,9 +1,9 @@
-"""utils/sql/llm_sql_generator.py — Mode EXPÉRIMENTAL « SQL généré par le LLM ».
+"""utils/sql/llm_sql_generator.py — Mode LLM→SQL « SQL généré par le LLM » (recommandé).
 
 Ce module traduit une question utilisateur en une requête SQL de **lecture seule**
-en s'appuyant sur un LLM (agent Pydantic AI, modèle Mistral, sortie typée). Il existe
-pour COMPARER l'approche « NL→SQL libre » au mode contrôlé de production
-(`utils/sql/nba_intents.py`), jamais pour le remplacer.
+en s'appuyant sur un LLM (agent Pydantic AI, modèle Mistral, sortie typée). C'est
+l'approche « agent + Tool » retenue comme mode par défaut du projet ; le mode contrôlé
+à mapping figé (`utils/sql/nba_intents.py`) reste disponible comme benchmark sécurisé.
 
 Responsabilité unique : **générer et valider statiquement** une requête. Ce module
 n'exécute JAMAIS de SQL lui-même. L'exécution (toujours via le SQL Tool sécurisé en
