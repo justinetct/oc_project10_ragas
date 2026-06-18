@@ -14,6 +14,7 @@ Versions repères :
 
 ## Sommaire
 
+- [Architecture](#architecture)
 - [Structure du dépôt](#structure-du-dépôt)
 - [Prérequis](#prérequis)
 - [Installation](#installation)
@@ -31,6 +32,20 @@ Versions repères :
 - [Observabilité](#observabilité)
 - [SQL Tool LangChain (lecture seule)](#sql-tool-langchain-lecture-seule)
 - [Mode expérimental : SQL généré par le LLM](#mode-expérimental--sql-généré-par-le-llm)
+
+## Architecture
+
+Vue simplifiée du système : les documents NBA sont indexés (FAISS pour le texte, SQLite pour les statistiques), puis un routeur dirige chaque question vers la bonne route avant de répondre dans Streamlit.
+
+```mermaid
+flowchart LR
+    SRC["Documents NBA<br/>PDF Reddit + Excel"] --> IDX["Indexation<br/>FAISS + SQLite"]
+    IDX --> ROUTER{"Routeur"}
+    ROUTER --> ROUTES["Routes<br/>rag · sql · hybride · hors-sujet"]
+    ROUTES --> APP(["Assistant<br/>Streamlit"])
+```
+
+Voir le schéma d'architecture détaillé dans le rapport : [docs/final_report.md](docs/final_report.md#architecture-cible).
 
 ## Structure du dépôt
 
@@ -277,14 +292,14 @@ Les résultats sont écrits dans `evaluation/results/` :
 
 Le notebook `notebooks/ragas_baseline_results.ipynb` permet de visualiser ces résultats sans relancer l'évaluation.
 
-Scores moyens de la baseline actuelle (juge RAGAS `mistral-large-latest`, 15 questions) :
+Scores moyens de la baseline RAG, moyenne sur 5 runs (juge RAGAS `mistral-large-latest`, 15 questions E01–E15) :
 
 | Métrique | Score moyen |
 |---|---:|
-| `faithfulness` | 0,35 |
-| `answer_relevancy` | 0,55 |
-| `context_precision` | 0,36 |
-| `context_recall` | 0,43 |
+| `faithfulness` | 0,36 |
+| `answer_relevancy` | 0,50 |
+| `context_precision` | 0,42 |
+| `context_recall` | 0,41 |
 
 La `faithfulness` reste limitée : les réponses ne sont pas toujours assez ancrées dans les sources. Les scores varient d'un run à l'autre, car le juge RAGAS est aussi un LLM. Les valeurs exactes et le détail par catégorie sont disponibles dans `ragas_baseline_summary.json`.
 

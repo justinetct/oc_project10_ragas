@@ -167,6 +167,83 @@ def load_variance_runs(conditions=None):
     return runs
 
 
+# Mêmes conditions que VARIANCE_CONDITIONS, mais pointant vers les CSV PAR QUESTION.
+# Les résumés ne donnent qu'une moyenne globale (hors-sujet inclus) ; relire les CSV
+# permet de filtrer par catégorie (ex. exclure « hors_sujet ») avant de moyenner.
+VARIANCE_CONDITIONS_CSV = {
+    label: pattern.replace("_summary.json", "_results.csv")
+    for label, pattern in VARIANCE_CONDITIONS.items()
+}
+
+
+def load_variance_run_csvs(conditions=None):
+    """Charge les CSV par question des runs de variance : {condition: [DataFrame, ...]}."""
+    conditions = conditions or VARIANCE_CONDITIONS_CSV
+    runs = {}
+    for label, pattern in conditions.items():
+        frames = []
+        for path in sorted(glob.glob(os.path.join(VARIANCE_DIR, pattern))):
+            df = load_results_csv(path)
+            if df is not None:
+                frames.append(df)
+        runs[label] = frames
+    return runs
+
+
+# La baseline RAG a elle aussi 5 runs de variance (jeu E01–E15), mais archivés AVANT la
+# convention `ragas_..._run*` : fichiers run0_1120 + run1..run4 (label vide, sans routage,
+# faithfulness ≈ 0,35). À NE PAS confondre avec l'ANCIEN pipeline (oldrun*,
+# ref_old_pipeline_HEAD, faithfulness ≈ 0,25), qui ne doit pas servir de repère.
+BASELINE_VARIANCE_RUNS = ["run0_1120", "run1", "run2", "run3", "run4"]
+
+
+def load_baseline_variance_csvs():
+    """CSV par question des 5 runs de variance de la baseline RAG (voir BASELINE_VARIANCE_RUNS)."""
+    frames = []
+    for name in BASELINE_VARIANCE_RUNS:
+        df = load_results_csv(os.path.join(VARIANCE_DIR, f"{name}_results.csv"))
+        if df is not None:
+            frames.append(df)
+    return frames
+
+
+def _csv_run_means(frames, exclude_categories=()):
+    """Pour chaque run : moyenne par métrique (catégories exclues). -> liste de dicts."""
+    exclude = set(exclude_categories)
+    per_run = []
+    for df in frames:
+        kept = df[~df["category"].isin(exclude)] if exclude else df
+        per_run.append({m: kept[m].mean() for m in METRICS if m in kept.columns})
+    return per_run
+
+
+def variance_csv_mean_table(runs_csv, exclude_categories=()):
+    """DataFrame métriques × condition : MOYENNE sur les runs des moyennes par métrique.
+
+    Contrairement à `variance_mean_table` (qui lit `mean_scores` des résumés, hors-sujet
+    inclus), cette variante relit les CSV par question et peut exclure des catégories
+    (ex. `exclude_categories=("hors_sujet",)`).
+    """
+    data = {}
+    for label, frames in runs_csv.items():
+        per_run = _csv_run_means(frames, exclude_categories)
+        data[label] = [pd.Series([r.get(m) for r in per_run]).mean() for m in METRICS]
+    return pd.DataFrame(data, index=METRICS)
+
+
+def variance_csv_std_table(runs_csv, exclude_categories=()):
+    """DataFrame métriques × condition : ÉCART-TYPE sur les runs (0 si un seul run)."""
+    data = {}
+    for label, frames in runs_csv.items():
+        per_run = _csv_run_means(frames, exclude_categories)
+        column = []
+        for metric in METRICS:
+            series = pd.Series([r.get(metric) for r in per_run]).dropna()
+            column.append(series.std(ddof=1) if len(series) > 1 else (0.0 if len(series) else None))
+        data[label] = column
+    return pd.DataFrame(data, index=METRICS)
+
+
 def _run_metric_values(summaries, metric, route=None):
     """Valeurs d'une métrique sur tous les runs d'une condition (global ou par route)."""
     values = []
