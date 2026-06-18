@@ -1,0 +1,97 @@
+{
+  "run_datetime": "2026-06-18T13:15:13",
+  "eval_label": "routed_llm_sql_only_evaluation_questions_unsupported_with_aspect",
+  "model": "mistral-small-latest",
+  "sql_generation_mode": "llm",
+  "hybrid_mode": "sql_only",
+  "rag_prompt_mode": "prototype",
+  "judge_model": "mistral-large-latest",
+  "embedding_model": "mistral-embed",
+  "ragas_version": "0.4.3",
+  "metrics": [
+    "faithfulness",
+    "answer_relevancy",
+    "context_precision",
+    "context_recall",
+    "aspect_critic"
+  ],
+  "base_metrics": [
+    "faithfulness",
+    "answer_relevancy",
+    "context_precision",
+    "context_recall"
+  ],
+  "extra_metrics": [
+    "aspect_critic"
+  ],
+  "extra_metrics_enabled": true,
+  "relevancy_strictness": 1,
+  "ragas_max_workers": 1,
+  "throttle_requests_per_second": 0.2475,
+  "n_questions": 5,
+  "n_evaluated": 5,
+  "n_scored_per_metric": {
+    "faithfulness": 5,
+    "answer_relevancy": 5,
+    "context_precision": 5,
+    "context_recall": 5,
+    "aspect_critic": 5
+  },
+  "route_distribution": {
+    "sql": 5
+  },
+  "mean_scores": {
+    "faithfulness": 0.1273,
+    "answer_relevancy": 0.0,
+    "context_precision": 0.0,
+    "context_recall": 0.3,
+    "aspect_critic": 0.8
+  },
+  "mean_scores_by_category": {
+    "evolution_temporelle": {
+      "faithfulness": 0.0,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 0.0,
+      "aspect_critic": 1.0
+    },
+    "granularite_match": {
+      "faithfulness": 0.0,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 1.0,
+      "aspect_critic": 1.0
+    },
+    "multi_saison": {
+      "faithfulness": 0.0,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 0.0,
+      "aspect_critic": 1.0
+    },
+    "par_match_calculable": {
+      "faithfulness": 0.0,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 0.0,
+      "aspect_critic": 1.0
+    },
+    "split_domicile_exterieur": {
+      "faithfulness": 0.6364,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 0.5,
+      "aspect_critic": 0.0
+    }
+  },
+  "mean_scores_by_route": {
+    "sql": {
+      "faithfulness": 0.1273,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 0.3,
+      "aspect_critic": 0.8
+    }
+  },
+  "notes_on_metrics": "context_precision et context_recall utilisent reference_answer comme référence. Pour les questions hors_sujet ou non couvertes (réponse honnête « non pris en charge »), cette référence décrit un comportement attendu et non des passages sources : leurs scores y sont donc faibles et à interpréter avec prudence, séparément de l'appréciation métier."
+}

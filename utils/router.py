@@ -10,11 +10,10 @@ Ni la classification ni le SQL ne sont produits par le LLM : la classification e
 mots-clés (`utils/text.py`), le SQL vient d'un mapping figé (`utils/sql/nba_intents.py`)
 exécuté en lecture seule. Le RAG texte est réutilisé tel quel (`utils/rag_agent.py`).
 
-Mode expérimental (désactivé par défaut) : si `SQL_GENERATION_MODE=llm`, la route SQL
-laisse le LLM générer la requête (`utils/sql/llm_sql_pipeline.py`) au lieu du mapping
-figé, pour comparer cette approche au mode contrôlé. La requête reste validée puis
-exécutée en lecture seule par le SQL Tool sécurisé ; le mode par défaut (`controlled`)
-est inchangé.
+Mode par défaut (`SQL_GENERATION_MODE=llm`, recommandé) : la route SQL laisse le LLM
+générer la requête (`utils/sql/llm_sql_pipeline.py`) — approche « agent + Tool ». La
+requête est validée puis exécutée en lecture seule par le SQL Tool sécurisé. Le mode
+`controlled` (mapping figé, sans LLM) reste disponible par configuration comme benchmark.
 """
 
 import logging
@@ -95,7 +94,7 @@ SQL_SOURCE_LABEL = "Base SQLite NBA — table des statistiques"
 SQL_TOOL_LABEL = "Calcul via le SQL Tool (lecture seule)"
 SQL_VOLUME_FILTER_LABEL = "Filtre 3P% : minimum 100 tentatives"
 HYBRID_SQL_SOURCE_LABEL = "Chiffre vérifié : base SQLite NBA"
-# Mode expérimental LLM→SQL : provenance résumée (jamais le SQL brut).
+# Mode LLM→SQL : provenance résumée (jamais le SQL brut).
 LLM_SQL_SOURCE_LABEL = "Requête SQL générée par le LLM, validée puis exécutée en lecture seule"
 
 # Notices courtes (la « limite / avertissement » affichée sous la réponse).
@@ -207,10 +206,10 @@ def _answer_rag(question, manager):
 def _answer_sql(question):
     """Route SQL : réponse chiffrée.
 
-    Par défaut (`SQL_GENERATION_MODE=controlled`) la requête vient du mapping prédéfini
-    (aucun LLM) — comportement de production inchangé. En mode expérimental
-    (`SQL_GENERATION_MODE=llm`, activable par configuration UNIQUEMENT), la requête est
-    générée par le LLM puis exécutée par le SQL Tool sécurisé (voir `_answer_sql_llm`).
+Par défaut (`SQL_GENERATION_MODE=llm`, recommandé) la requête est générée par le LLM
+    puis exécutée par le SQL Tool sécurisé (voir `_answer_sql_llm`). En mode benchmark
+    (`SQL_GENERATION_MODE=controlled`), la requête vient d'un mapping prédéfini (aucun LLM),
+    déterministe et stable.
 
     Cas particulier traité AVANT le choix du mode : une question à granularité indisponible
     (domicile/extérieur, matchs récents) reçoit une réponse honnête IDENTIQUE dans les deux
@@ -247,9 +246,9 @@ def _answer_sql(question):
 
 
 def _answer_sql_llm(question):
-    """Route SQL EXPÉRIMENTALE : requête générée par le LLM, validée, puis exécutée.
+    """Route SQL (mode par défaut) : requête générée par le LLM, validée, puis exécutée.
 
-    Activée seulement si `SQL_GENERATION_MODE=llm`. Le LLM n'exécute jamais de SQL :
+    Active quand `SQL_GENERATION_MODE=llm` (le défaut). Le LLM n'exécute jamais de SQL :
     `run_llm_sql` génère la requête, la valide (lecture seule) et la passe au SQL Tool
     sécurisé. En cas de refus, d'échec de validation ou d'erreur, on renvoie un message
     honnête (aucun chiffre inventé, jamais de SQL brut affiché). `mode="llm_sql"` trace

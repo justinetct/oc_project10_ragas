@@ -38,17 +38,16 @@ if HYBRID_MODE not in _VALID_HYBRID_MODES:
     raise ValueError(f"HYBRID_MODE invalide : {HYBRID_MODE}. Valeurs possibles : {_VALID_HYBRID_MODES}")
 HYBRID_RAG_K = 3                    # Nb d'extraits FAISS ajoutés en mode sql_with_rag_context
 
-# --- Génération des requêtes SQL (mode contrôlé vs expérimental LLM→SQL) ---
+# --- Génération des requêtes SQL (LLM→SQL recommandé vs benchmark contrôlé) ---
 # Décide COMMENT la requête SQL des questions chiffrées est produite :
-# - "controlled" (DÉFAUT) : mode de production actuel. Les requêtes viennent d'un
-#   mapping figé à colonnes sur liste blanche (`utils/sql/nba_intents.py`). Aucun
-#   SQL n'est écrit par le LLM. C'est le mode par défaut, inchangé.
-# - "llm" (EXPÉRIMENTAL) : le LLM génère la requête SQL à partir de la question
-#   (`utils/sql/llm_sql_generator.py`), puis cette requête passe TOUJOURS par le
-#   SQL Tool sécurisé en lecture seule. Activable par configuration uniquement,
-#   pour comparer l'approche « SQL généré » au mode contrôlé. Le LLM n'exécute
-#   jamais de SQL et aucune écriture en base n'est possible.
-SQL_GENERATION_MODE = os.getenv("SQL_GENERATION_MODE", "controlled")
+# - "llm" (DÉFAUT, RECOMMANDÉ) : le LLM interprète la question et propose une requête SQL
+#   (`utils/sql/llm_sql_generator.py`), qui passe TOUJOURS par le SQL Tool sécurisé en
+#   lecture seule. C'est l'approche « agent + Tool » retenue pour ce projet. Le LLM
+#   n'exécute jamais de SQL et aucune écriture en base n'est possible.
+# - "controlled" (BENCHMARK) : les requêtes viennent d'un mapping figé à colonnes sur
+#   liste blanche (`utils/sql/nba_intents.py`), sans LLM. Déterministe et stable, il
+#   sert de référence de comparaison.
+SQL_GENERATION_MODE = os.getenv("SQL_GENERATION_MODE", "llm")
 _VALID_SQL_GENERATION_MODES = ("controlled", "llm")
 if SQL_GENERATION_MODE not in _VALID_SQL_GENERATION_MODES:
     raise ValueError(

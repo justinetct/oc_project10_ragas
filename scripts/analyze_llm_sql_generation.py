@@ -1,7 +1,7 @@
 """scripts/analyze_llm_sql_generation.py — Analyse des requêtes SQL générées par le LLM.
 
-Ce script teste concrètement le mode EXPÉRIMENTAL « SQL généré par le LLM »
-(`utils/sql/llm_sql_pipeline.py`) sur un panel de questions variées, et trace pour
+Ce script teste concrètement le mode LLM→SQL « SQL généré par le LLM » (mode par défaut,
+`utils/sql/llm_sql_pipeline.py`) sur un panel de questions variées, et trace pour
 chacune ce que le LLM a produit : décision, requête, validation (lecture seule),
 exécution (via le SQL Tool sécurisé), nombre de lignes et aperçu du résultat.
 

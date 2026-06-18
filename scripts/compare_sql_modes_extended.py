@@ -45,8 +45,19 @@ from utils.sql.nba_intents import NOT_SUPPORTED_MESSAGE
 
 DEFAULT_DATASET = os.path.join("evaluation", "evaluation_questions_sql_extended.csv")
 OUTPUT_DIR = os.path.join("evaluation", "results")
-CSV_PATH = os.path.join(OUTPUT_DIR, "sql_modes_extended_comparison.csv")
-JSON_PATH = os.path.join(OUTPUT_DIR, "sql_modes_extended_comparison.json")
+
+
+def output_paths(label=""):
+    """Chemins de sortie (CSV, JSON). Un `label` non vide isole le run sans rien écraser.
+
+    Défaut (label vide) : `sql_modes_extended_comparison.*` — comportement historique inchangé.
+    Avec --label unsupported : `sql_modes_unsupported_comparison.*` — n'écrase pas le jeu étendu.
+    """
+    stem = f"sql_modes_{label}_comparison" if label else "sql_modes_extended_comparison"
+    return (
+        os.path.join(OUTPUT_DIR, f"{stem}.csv"),
+        os.path.join(OUTPUT_DIR, f"{stem}.json"),
+    )
 
 CSV_COLUMNS = [
     "question_id", "category", "question", "expected_behavior",
@@ -198,15 +209,15 @@ def build_summary(records, dataset, dry_run):
     }
 
 
-def save(records, summary):
+def save(records, summary, csv_path, json_path):
     """Écrit le CSV (lecture humaine) et le JSON (résumé + records)."""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    with open(CSV_PATH, "w", encoding="utf-8", newline="") as f:
+    with open(csv_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
         writer.writeheader()
         for record in records:
             writer.writerow({key: record.get(key, "") for key in CSV_COLUMNS})
-    with open(JSON_PATH, "w", encoding="utf-8") as f:
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump({"summary": summary, "records": records}, f, ensure_ascii=False, indent=2)
 
 
@@ -215,7 +226,12 @@ def main():
     parser.add_argument("--dataset", default=DEFAULT_DATASET, help="Jeu de questions (CSV).")
     parser.add_argument("--dry-run", action="store_true", help="Aucun appel API (routes + réponses contrôlées seulement).")
     parser.add_argument("--limit", type=int, default=None, help="N premières questions seulement.")
+    parser.add_argument(
+        "--label", default="",
+        help="Suffixe de sortie (sql_modes_<label>_comparison.*) pour isoler un run sans écraser le jeu étendu.",
+    )
     args = parser.parse_args()
+    csv_path, json_path = output_paths(args.label)
 
     load_dotenv()
     if not args.dry_run and not os.getenv("MISTRAL_API_KEY"):
@@ -247,14 +263,14 @@ def main():
         records.append(compare_question(row, args.dry_run, run_llm_sql))
 
     summary = build_summary(records, args.dataset, args.dry_run)
-    save(records, summary)
+    save(records, summary, csv_path, json_path)
 
     print("\n=== Résumé ===")
     print(f"Mode      : {summary['mode']}")
     print(f"Questions : {summary['n_questions']}")
     print(f"Statuts   : {summary['status_counts']}")
-    print(f"\nCSV  : {CSV_PATH}")
-    print(f"JSON : {JSON_PATH}")
+    print(f"\nCSV  : {csv_path}")
+    print(f"JSON : {json_path}")
 
 
 if __name__ == "__main__":
