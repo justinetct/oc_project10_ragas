@@ -1,4 +1,5 @@
 # MistralChat.py (version RAG + routage SQL)
+import os
 import streamlit as st
 import logging
 import logfire
@@ -63,6 +64,17 @@ if "messages" not in st.session_state:
     # Message d'accueil initial
     st.session_state.messages = [{"role": "assistant", "content": f"Bonjour ! Je suis votre analyste IA pour la {NAME}. Posez-moi vos questions sur les équipes, les joueurs ou les statistiques, et je vous répondrai en me basant sur les données les plus récentes."}]
 
+def render_plot_image(message):
+    """Affiche le graphique généré (route « plot ») s'il existe et que le fichier est présent.
+
+    Robuste : n'affiche rien si la réponse n'a pas produit d'image (autres routes, message
+    d'accueil) ou si le fichier a disparu (dossier data/plots/ non versionné).
+    """
+    image_path = message.get("image_path")
+    if image_path and os.path.exists(image_path):
+        st.image(image_path, width="stretch")
+
+
 def render_route_details(message):
     """Affiche, sous une réponse de l'assistant, le type de traitement et un encart
     « Sources et limites ».
@@ -95,6 +107,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.write(message["content"])
         if message["role"] == "assistant":
+            render_plot_image(message)
             render_route_details(message)
 
 # Zone de saisie utilisateur
@@ -126,22 +139,25 @@ if prompt := st.chat_input(f"Posez votre question sur la {NAME}..."):
                 route_label = ROUTE_LABELS.get(routed.route, routed.route)
                 sources = routed.sources
                 notice = routed.notice
+                image_path = routed.image_path
             except Exception:
                 logging.exception("Erreur lors du routage / de la génération")
                 response_content = "Je suis désolé, une erreur technique m'empêche de répondre. Veuillez réessayer plus tard."
-                route_label, sources, notice = None, [], None
+                route_label, sources, notice, image_path = None, [], None, None
 
             logfire.info("reponse_routee", route=route_label)
 
-            # Message assistant = réponse + métadonnées d'affichage (route, sources, limite).
+            # Message assistant = réponse + métadonnées d'affichage (route, image, sources, limite).
             assistant_message = {
                 "role": "assistant",
                 "content": response_content,
                 "route_label": route_label,
                 "sources": sources,
                 "notice": notice,
+                "image_path": image_path,
             }
             message_placeholder.write(response_content)
+            render_plot_image(assistant_message)
             render_route_details(assistant_message)
 
         # Ajout à l'historique : les métadonnées seront ré-affichées au prochain run.
