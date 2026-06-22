@@ -31,7 +31,11 @@ tqdm = "^4.67"
 numpy = ">=1.26"
 
 # --- OCR ---
-easyocr = "^1.7"             # utilisé par le code actuel (utils/data_loader.py)
+# Deux moteurs OCR, sélectionnables (OCR_ENGINE) pour comparer le taux de reconnaissance :
+#   - easyocr  : moteur historique du prototype (rapide, léger) ;
+#   - nanonets : Nanonets-OCR-s (VLM Qwen2.5-VL via transformers, voir lignes plus bas),
+#     moteur OCR alternatif évalué (opt-in).
+easyocr = "^1.7"             # moteur OCR historique (utils/data_loader.py)
 pytesseract = "^0.3"         # prévu pour la suite (non utilisé dans le code pour l'instant)
 
 # --- Évaluation RAGAS (utilisées par scripts/evaluate_ragas.py) ---
@@ -41,6 +45,9 @@ langchain-mistralai = "^0.2"   # branche Mistral (LLM + embeddings) sur RAGAS
 logfire = "*"
 # --- Génération structurée : agent RAG à sortie typée (Pydantic AI) ---
 pydantic-ai-slim = {version = "<1.0", extras = ["mistral"]}
+# --- OCR Nanonets-OCR-s (moteur OCR VLM alternatif, opt-in) ---
+transformers = ">=4.49,<5"      # exécute le VLM Nanonets-OCR-s (Qwen2.5-VL) en local
+accelerate = "^1.14.0"       # chargement / placement device du modèle
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
