@@ -90,8 +90,8 @@ filterwarnings = [
     "ignore:You should use `LoggerProvider` instead:DeprecationWarning",
     "ignore:You should use `ProxyLoggerProvider` instead:DeprecationWarning",
     "ignore:Importing .* from 'ragas.metrics' is deprecated:DeprecationWarning",
+    "ignore::DeprecationWarning:PyPDF2.*",
 ]
-
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
