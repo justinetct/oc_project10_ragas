@@ -22,7 +22,7 @@ pydantic = "^2.0"
 # --- Chargement / parsing des documents ---
 pandas = "^2.2"
 openpyxl = "^3.1"
-pillow = "^11.0"
+pillow = ">=11,<13"
 pymupdf = "^1.24"
 pypdf2 = "^3.0"
 python-docx = "^1.1"
@@ -54,7 +54,7 @@ accelerate = "^1.14.0"       # chargement / placement device du modèle
 matplotlib = "^3.10.9"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.0"
+pytest = ">=8,<10"
 ruff = ">=0.6"
 ipykernel = "^7.0"           # pour exécuter le notebook depuis l'environnement Poetry
 
