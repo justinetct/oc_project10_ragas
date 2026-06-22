@@ -59,6 +59,7 @@ from utils.ragas_config import (
     RAGAS_MAX_WORKERS, RAGAS_REQUESTS_PER_SECOND, RAGAS_TIMEOUT_SECONDS,
     RAGAS_MAX_RETRIES, RAGAS_MAX_WAIT_SECONDS, RAGAS_LIMIT_QUESTIONS,
     RAGAS_EXTRA_METRICS, RAGAS_ASPECT_CRITIC_NAME, RAGAS_ASPECT_CRITIC_DEFINITION,
+    RAGAS_RUN_LABEL_SUFFIX,
 )
 from utils.vector_store import VectorStoreManager
 from utils.router import answer_question
@@ -424,7 +425,7 @@ def summarize_ragas_results(merged, eval_label, metric_columns, extra_metrics=()
         "mean_scores_by_route": mean_by_route,
         "notes_on_metrics": (
             "context_precision et context_recall utilisent reference_answer comme "
-            "référence. Pour les questions hors_sujet ou non couvertes (réponse honnête "
+            "référence. Pour les questions hors_sujet ou non couvertes (réponse claire "
             "« non pris en charge »), cette référence décrit un comportement attendu "
             "et non des passages sources : leurs scores y sont donc faibles et à "
             "interpréter avec prudence, séparément de l'appréciation métier."
@@ -487,6 +488,9 @@ def main():
     # Métriques extra -> suffixe clair (_with_correctness, _with_correctness_aspect…) :
     # les fichiers extra ne remplacent JAMAIS les résultats des 4 métriques historiques.
     label += extra_metrics_label_suffix(extra_metrics)
+    # Suffixe libre (ex. _ocr / _noocr) : distingue l'index utilisé sans toucher aux
+    # fichiers d'une condition sans suffixe. Vide par défaut -> aucun changement.
+    label += RAGAS_RUN_LABEL_SUFFIX
 
     print(f"=== Évaluation RAGAS — assistant RAG NBA (condition : {label}) ===")
     print(

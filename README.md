@@ -6,7 +6,7 @@ L'application permet d'interroger des sources NBA mixtes : archives Reddit extra
 
 Versions repères :
 
-| Nom | Description | Tag Git prévu |
+| Nom | Description | Tag Git |
 |---|---|---|
 | **RAG v1 — baseline** | pipeline RAG initial | `rag-v1-baseline` |
 | **RAG v2 — contrôlé** | ajout de Pydantic, Pydantic AI et Logfire | `rag-v2-controlled` |
@@ -25,6 +25,7 @@ Pour une vue d'ensemble en une minute, voir le [résumé exécutif du rapport](d
 - [Commandes utiles](#commandes-utiles)
 - [Utilisation](#utilisation)
   - [Indexation des documents](#indexation-des-documents)
+  - [Option OCR Nanonets](#option-ocr-nanonets)
   - [Lancement de l'application](#lancement-de-lapplication)
 - [Routage RAG / SQL](#routage-rag--sql)
 - [Évaluation et résultats](#évaluation-et-résultats)
@@ -35,6 +36,7 @@ Pour une vue d'ensemble en une minute, voir le [résumé exécutif du rapport](d
 - [Observabilité](#observabilité)
 - [SQL Tool LangChain (lecture seule)](#sql-tool-langchain-lecture-seule)
 - [Modes SQL : benchmark contrôlé et version finale LLM→SQL](#modes-sql--benchmark-contrôlé-et-version-finale-llmsql)
+- [Annexe — Expérience OCR Nanonets](#annexe--expérience-ocr-nanonets)
 
 ## Architecture
 
@@ -72,22 +74,19 @@ Voir le schéma d'architecture détaillé dans le rapport : [docs/final_report.m
 ├── notebooks/
 │   ├── audit.ipynb                  # Notebook d'audit initial
 │   ├── ragas_baseline_results.ipynb # Illustration de la baseline RAGAS
-│   └── sql_modes_analysis.ipynb     # Comparaison des modes SQL (contrôlé / hybride / LLM)
+│   ├── sql_modes_analysis.ipynb     # Comparaison des modes SQL (contrôlé / hybride / LLM)
+│   └── nanonets_ocr_analysis.ipynb  # Analyse OCR EasyOCR vs Nanonets-OCR-s (+ optimisation)
 ├── scripts/
-│   ├── evaluate_ragas.py              # Évaluation RAGAS (pipeline routé ou baseline RAG)
-│   ├── compare_ragas_runs.py         # Compare les résumés RAGAS de plusieurs conditions
-│   ├── aggregate_variance_runs.py    # Moyenne ± écart-type sur plusieurs runs (juge bruité)
-│   ├── compare_sql_modes_extended.py # Compare contrôlé vs LLM→SQL sur le jeu étendu (sans RAGAS)
-│   ├── analyze_llm_sql_generation.py # Trace les requêtes générées par le LLM (sans RAGAS)
-│   ├── make_report_figures.py        # Régénère les figures du rapport (sans API)
-│   ├── run_all_ragas.sh              # Lance tous les runs (variance ×5 + passes extra)
-│   └── load_excel_to_db.py           # Construit la base SQLite NBA depuis l'Excel
+│   ├── evaluate_ragas.py              # Évaluation RAGAS
+│   ├── load_excel_to_db.py            # Construit la base SQLite NBA
+│   └── ocr/                           # Scripts de l’expérience OCR optionnelle
 ├── tests/                       # Tests qualité et validation (sans appel API)
 ├── utils/
 │   ├── config.py                # Configuration app / RAG / SQL / Logfire
 │   ├── ragas_config.py          # Configuration dédiée à l'évaluation RAGAS
 │   ├── results_io.py            # Lecture des résultats d'évaluation (notebook + tests)
 │   ├── data_loader.py           # Chargement OCR / Excel / documents
+│   ├── ocr/                     # Nettoyage OCR et moteur Nanonets optionnel
 │   ├── observability.py         # Configuration optionnelle de Logfire
 │   ├── rag_agent.py             # Agent Pydantic AI : génération de la réponse à sortie typée
 │   ├── router.py                # Routage RAG / SQL / hybride / hors-sujet
@@ -144,7 +143,7 @@ Trois contrôles simples permettent d'éviter de casser le prototype entre deux 
 
 ```bash
 # Compilation : vérifie la syntaxe de tous les modules
-poetry run python -m compileall MistralChat.py indexer.py scripts utils notebooks tests
+poetry run python -m compileall MistralChat.py indexer.py scripts utils tests
 
 # Linter
 poetry run ruff check .
@@ -193,7 +192,30 @@ poetry run python indexer.py
 
 Cette commande lit les documents du dossier `inputs/`, extrait leur contenu, génère les embeddings Mistral et construit l'index FAISS local dans `vector_db/`.
 
-Lors du dernier audit, l'indexation a produit **302 chunks**.
+
+> L’indexation par défaut produit **302 chunks**.
+
+### Option OCR Nanonets
+
+Par défaut, le projet utilise **EasyOCR**. Aucune configuration supplémentaire n’est nécessaire pour lancer l’application ou reproduire la version finale V4.
+
+Une variante expérimentale permet d’utiliser **Nanonets-OCR-s** sur les PDF Reddit. Elle sert uniquement à reconstruire un index documentaire alternatif et à comparer l’impact de l’OCR sur la route RAG texte.
+
+Pour construire cette variante :
+
+```bash
+# 1) Extraire les PDF Reddit avec Nanonets-OCR-s
+poetry run python scripts/ocr/extract_documents.py --ocr-engine nanonets --output vector_db_nanonets/documents.pkl
+
+# 2) Construire l’index nettoyé avec préfixe du titre de thread
+poetry run python scripts/ocr/build_variant.py --documents vector_db_nanonets/documents.pkl \
+  --vector-db-dir vector_db_nanonets_clean_title --clean --prepend-title
+
+# 3) Lancer l’application avec cet index alternatif
+VECTOR_DB_DIR=vector_db_nanonets_clean_title poetry run streamlit run MistralChat.py
+```
+
+Voir [l’annexe — Expérience OCR Nanonets](#annexe--expérience-ocr-nanonets) pour le récapitulatif des résultats.
 
 ### Lancement de l'application
 
@@ -278,12 +300,14 @@ poetry run python scripts/evaluate_ragas.py
 
 Prérequis : un fichier `.env` avec `MISTRAL_API_KEY` et un index FAISS déjà construit (`poetry run python indexer.py`).
 
-Depuis le routage, l'évaluation passe par le **même pipeline que l'application** (`utils/router.py`) et porte sur le jeu figé E01–E15. Trois conditions peuvent être comparées sur le même jeu de questions :
+Depuis le routage, l'évaluation passe par le **même pipeline que l'application** (`utils/router.py`) et porte sur le jeu figé E01–E15. 
+Les conditions principales peuvent être comparées sur le même jeu de questions :
 
 ```bash
 poetry run python scripts/evaluate_ragas.py --eval-mode baseline_rag
-HYBRID_MODE=sql_only poetry run python scripts/evaluate_ragas.py --eval-mode routed
-HYBRID_MODE=sql_with_rag_context poetry run python scripts/evaluate_ragas.py --eval-mode routed
+SQL_GENERATION_MODE=controlled HYBRID_MODE=sql_only poetry run python scripts/evaluate_ragas.py --eval-mode routed
+SQL_GENERATION_MODE=controlled HYBRID_MODE=sql_with_rag_context poetry run python scripts/evaluate_ragas.py --eval-mode routed
+SQL_GENERATION_MODE=llm HYBRID_MODE=sql_only poetry run python scripts/evaluate_ragas.py --eval-mode routed
 ```
 
 Chaque condition écrit ses propres fichiers `ragas_<condition>_results.csv` / `_summary.json` (colonnes `route` et `mode` incluses).
@@ -372,7 +396,7 @@ Pour les routes SQL (benchmark v3 comme version finale v4), le projet fournit un
 Les questions chiffrées peuvent être traitées de deux façons, toutes deux via le **SQL Tool sécurisé** en lecture seule :
 
 1. **`controlled_sql` — benchmark** : intentions + requêtes SQL prédéfinies (`utils/sql/nba_intents.py`). Déterministe et stable, sert de point de comparaison. Une variante hybride (`controlled_hybrid`) ajoute des contextes RAG sur les questions mixtes.
-2. **`llm_sql` — version finale (approche cible)** : le LLM détecte la question chiffrée, génère une requête SQL, l'exécute via le SQL Tool, puis synthétise. C'est l'attendu « agent + Tool » de l'énoncé ; c'est la version retenue pour ce projet.
+2. **`llm_sql` — version finale (approche cible)** : le LLM détecte la question chiffrée, génère une requête SQL, l'exécute via le SQL Tool, puis synthétise. C'est l'approche « agent + Tool », retenue comme version finale.
 
 Le choix se fait par configuration :
 
@@ -386,7 +410,7 @@ Garde-fous (non négociables) :
 - le **LLM n'exécute jamais** de SQL : il propose seulement un texte de requête (`utils/sql/llm_sql_generator.py`), avec une sortie structurée validée par Pydantic (`should_query`, `sql`, `reason`, `expected_result_type`) ;
 - toute requête générée est **revalidée** (lecture seule : `SELECT`/`WITH` uniquement, une seule requête, mots-clés d'écriture interdits) puis **exécutée par le SQL Tool sécurisé** en lecture seule (`mode=ro`) — aucune écriture en base n'est possible ;
 - une **limite de lignes** est imposée à l'exécution, même si le LLM l'oublie ;
-- si la question n'est pas couverte par le schéma (donnée absente, hors NBA, ambiguë), le LLM répond `should_query=false` et l'assistant refuse honnêtement.
+- si la question n'est pas couverte par le schéma (donnée absente, hors NBA, ambiguë), le LLM répond `should_query=false` et l'assistant explique la limite des données.
 
 Pour **analyser les requêtes générées** (et non les scores RAGAS), un script dédié exécute le pipeline LLM→SQL sur un panel de questions variées (simples, classements, stats joueur, totaux équipe, non supportées, hors NBA, ambiguës, dangereuses) et trace pour chacune la requête, sa validation, son exécution et un aperçu du résultat :
 
@@ -396,5 +420,49 @@ SQL_GENERATION_MODE=llm poetry run python scripts/analyze_llm_sql_generation.py
 
 Résultats écrits dans `evaluation/results/` : `llm_sql_generation_analysis.csv` et `llm_sql_generation_analysis.json`.
 
-La comparaison RAGAS des trois conditions reste possible via le même pipeline (`scripts/evaluate_ragas.py`), en activant `SQL_GENERATION_MODE=llm`, mais n'est pas lancée automatiquement (coût API).
+La comparaison RAGAS des modes SQL reste possible via le même pipeline (`scripts/evaluate_ragas.py`), en activant `SQL_GENERATION_MODE=llm`, mais n'est pas lancée automatiquement (coût API).
 
+## Annexe — Expérience OCR Nanonets
+
+Cette expérience compare le moteur OCR historique **EasyOCR** avec la variante Nanonets retenue pour l’analyse : **Nanonets-OCR-s + nettoyage documentaire + préfixe du titre de thread**.
+
+Elle concerne uniquement la reconstruction de l’index des PDF Reddit. La version finale V4 de l’assistant ne change pas.
+
+### Résumé de la variante
+
+| Élément | EasyOCR | Nanonets                                                              |
+|---|---|-----------------------------------------------------------------------|
+| Moteur OCR | EasyOCR | Nanonets-OCR-s                                                        |
+| Nettoyage documentaire | Non | Oui : chrome Reddit, pubs, balises, compteurs, flux de posts suggérés |
+| Structuration des chunks | Chunk simple | Préfixe du titre de thread sur chaque chunk Reddit                    |
+| Usage | Comportement standard | Option expérimentale                                                  |
+
+### Résultats RAGAS
+
+Moyenne ± écart-type sur 5 runs, jeu figé E01–E15.
+
+**Global — 15 questions**
+
+| Métrique | EasyOCR |          Nanonets |
+|---|---:|------------------:|
+| `faithfulness` | 0,539 ± 0,017 | **0,544 ± 0,017** |
+| `answer_relevancy` | 0,604 ± 0,049 | **0,619 ± 0,025** |
+| `context_precision` | 0,552 ± 0,038 | **0,563 ± 0,018** |
+| `context_recall` | **0,618 ± 0,028** |     0,556 ± 0,041 |
+
+**Route RAG — 5 questions documentaires**
+
+| Métrique | EasyOCR |          Nanonets |
+|---|---:|------------------:|
+| `faithfulness` | 0,441 ± 0,020 | **0,497 ± 0,013** |
+| `answer_relevancy` | 0,691 ± 0,151 | **0,743 ± 0,067** |
+| `context_precision` | 0,455 ± 0,113 | **0,490 ± 0,055** |
+| `context_recall` | **0,800 ± 0,071** |     0,733 ± 0,122 |
+
+### Lecture
+
+Nanonets-OCR-s extrait davantage de texte, mais l’OCR brute ajoute aussi du bruit. La variante retenue combine donc le moteur Nanonets avec un nettoyage documentaire et le préfixe du titre du thread Reddit dans chaque chunk.
+
+Cette variante améliore surtout la lisibilité des textes Reddit et la fidélité de la route RAG. Elle récupère aussi une partie du rappel perdu par le nettoyage strict. En revanche, les scores globaux restent proches d’EasyOCR, et le `context_recall` reste meilleur avec le moteur historique.
+
+Pour cette raison, **EasyOCR reste le moteur par défaut**. Nanonets reste une option documentée pour tester un index OCR alternatif, mais il ne remplace pas le comportement standard du projet.

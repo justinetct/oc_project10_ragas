@@ -28,6 +28,12 @@ ENV/
 
 # Vector store (artefact reconstructible via indexer.py)
 vector_db/
+# Index de la comparaison OCR (reconstructibles via indexer.py / extract_documents.py)
+vector_db_noocr/
+vector_db_easyocr/
+vector_db_nanonets/
+# Variantes d'optimisation OCR (nettoyage / chunking)
+vector_db_nanonets_*/
 
 # Database (artefact local)
 database/
@@ -56,6 +62,21 @@ evaluation/results/ragas_routed_controlled_sql_with_rag_context_results.csv
 # résumés ×5 (…_run*_summary.json) dont le notebook a besoin pour l'analyse de variance.
 evaluation/results/variance_runs/*
 !evaluation/results/variance_runs/*_run*_summary.json
+
+# Expérience OCR Nanonets : artefacts intermédiaires NON versionnés. Le récap OCR vit
+# dans le README (annexe), le rapport (annexe F) et notebooks/nanonets_ocr_analysis.ipynb.
+# On ne versionne QUE ce que le notebook relit : evaluation/results/ocr_recognition_summary.json
+# et variance_runs/ragas_routed_llm_sql_only_nanonets_ocr_clean_title_run*_summary.json.
+evaluation/results/nanonets_ocr_analysis.md
+evaluation/results/ocr_text/
+# Résultats RAGAS bruts/intermédiaires de l'expérience OCR (raw Nanonets, clean, clean_final,
+# variantes de chunking / top-k) : non versionnés (seul clean+titre alimente le notebook).
+evaluation/results/ragas_routed_llm_sql_only_nanonets_*
+evaluation/results/variance_runs/ragas_routed_llm_sql_only_nanonets_run*_summary.json
+evaluation/results/variance_runs/ragas_routed_llm_sql_only_nanonets_ocr_clean_run*_summary.json
+evaluation/results/variance_runs/ragas_routed_llm_sql_only_nanonets_ocr_clean_final_run*_summary.json
+evaluation/results/variance_runs/ragas_routed_llm_sql_only_nanonets_ocr_clean_chunk_*_summary.json
+evaluation/results/variance_runs/ragas_routed_llm_sql_only_nanonets_ocr_clean_topk*_summary.json
 
 # Streamlit
 .streamlit/

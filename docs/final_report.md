@@ -40,7 +40,7 @@
     - [Annexe C — exemples de requêtes SQL](#annexe-c--exemples-de-requêtes-sql)
     - [Annexe D — détail chiffré V3 vs V4 (route SQL)](#annexe-d--détail-chiffré-v3-vs-v4-route-sql)
     - [Annexe E — exemples de réponses](#annexe-e--exemples-de-réponses)
-
+    - [Annexe F — OCR : EasyOCR → Nanonets-OCR-s](#annexe-f--ocr--easyocr--nanonets-ocr-s)
 ---
 
 ## Résumé exécutif
@@ -50,9 +50,9 @@ Ce projet améliore un assistant NBA qui répond à partir de documents (discuss
 - **V1 — baseline RAG** : le système retrouve des passages puis rédige. Il marche, mais reste fragile, surtout sur les **questions chiffrées** (il reformule un extrait au lieu de calculer) : `faithfulness` ≈ 0,25.
 - **V2 — RAG contrôlé** : ajout de Pydantic, Pydantic AI et Logfire pour structurer et tracer la génération. Les réponses sont mieux ancrées dans les sources (`faithfulness` ≈ 0,36).
 - **V3 — SQL contrôlé (benchmark)** : les statistiques sont chargées dans une base SQLite interrogée par un **SQL Tool en lecture seule**, avec des requêtes issues d'un mapping figé. C'est un **benchmark sécurisé et stable**, pas la version finale ; il fait nettement progresser les questions chiffrées (`faithfulness` ≈ 0,51).
-- **V4 — agent LLM→SQL (version finale)** : le LLM détecte la question chiffrée, propose une requête SQL, appelle le SQL Tool, puis synthétise. C'est l'approche « agent + Tool » de l'énoncé, retenue comme version finale.
+- **V4 — agent LLM→SQL (version finale)** : le LLM détecte la question chiffrée, propose une requête SQL, appelle le SQL Tool, puis synthétise. C'est l'approche « agent + Tool », retenue comme version finale.
 
-**Résultat clé** : sur le jeu figé E01–E15, V4 est **au moins à parité** avec le benchmark V3 (`faithfulness` ≈ 0,54). Sur des questions chiffrées **impossibles** avec les données actuelles (ex. « 5 derniers matchs »), V4 est nettement meilleur : il **refuse honnêtement** au lieu de répondre à côté (`aspect_critic` 0,80 contre 0,20). Dans les deux modes, aucune statistique n'est inventée : toute requête reste validée et exécutée en lecture seule.
+**Résultat clé** : sur le jeu figé E01–E15, V4 est **au moins à parité** avec le benchmark V3 (`faithfulness` ≈ 0,54). Sur des questions chiffrées **impossibles** avec les données actuelles (ex. « 5 derniers matchs »), V4 est nettement meilleur : il **refuse clairement** au lieu de répondre à côté (`aspect_critic` 0,80 contre 0,20). Dans les deux modes, aucune statistique n'est inventée : toute requête reste validée et exécutée en lecture seule.
 
 **Limite principale** : les données sont agrégées sur la saison (pas de match par match). Les questions qui demandent ce détail (5 derniers matchs, domicile/extérieur, évolution) doivent être refusées — ce que V4 fait mieux que le benchmark.
 
@@ -71,7 +71,7 @@ Le travail s'organise autour d'une progression en quatre versions :
 1. **RAG v1 — baseline** : auditer le prototype initial et mesurer ses limites avec RAGAS ;
 2. **RAG v2 — contrôlé** : sécuriser le pipeline avec Pydantic, Pydantic AI et Logfire, puis vérifier si l'ancrage des réponses progresse ;
 3. **RAG v3 — SQL contrôlé (benchmark)** : ajouter une couche SQLite et un routage RAG / SQL / hybride / refus, avec des requêtes SQL **prédéfinies** — un benchmark stable et sécurisé pour les questions chiffrées ;
-4. **RAG v4 — agent LLM→SQL (version finale)** : laisser le LLM détecter la question chiffrée, proposer une requête SQL, appeler le SQL Tool en lecture seule, puis synthétiser la réponse. C'est la version qui correspond le mieux à l'attendu « agent + Tool » de l'énoncé, et celle retenue pour ce projet.
+4. **RAG v4 — agent LLM→SQL (version finale)** : laisser le LLM détecter la question chiffrée, proposer une requête SQL, appeler le SQL Tool en lecture seule, puis synthétiser la réponse. C'est la version qui correspond le mieux à l'objectif « agent + Tool », et celle retenue pour ce projet.
 
 Pour simplifier la lecture, les versions sont nommées ainsi :
 
@@ -466,7 +466,8 @@ Deux variantes du mode contrôlé ont été regardées sur les questions `hybrid
 
 ## 7. RAG v4 — agent LLM→SQL (version finale)
 
-Le mode contrôlé (v3) répond bien aux questions prévues, mais il faut écrire une règle pour chaque nouveau cas. La version finale change d'approche : c'est **le LLM qui interprète la question chiffrée, propose une requête SQL, appelle le SQL Tool, puis synthétise la réponse**. C'est l'attendu « agent + Tool » de l'énoncé de l'étape 2. C'est désormais le **mode par défaut** (`SQL_GENERATION_MODE=llm`) ; le mode contrôlé reste disponible comme benchmark (`SQL_GENERATION_MODE=controlled`).
+Le mode contrôlé (v3) répond bien aux questions prévues, mais il faut écrire une règle pour chaque nouveau cas. La version finale change d'approche : c'est **le LLM qui interprète la question chiffrée, propose une requête SQL, appelle le SQL Tool, puis synthétise la réponse**. 
+>C'est le **mode par défaut** (`SQL_GENERATION_MODE=llm`) ; le mode contrôlé reste disponible comme benchmark (`SQL_GENERATION_MODE=controlled`).
 
 ### Principe : agent + SQL Tool
 
@@ -484,7 +485,7 @@ La souplesse du LLM est entièrement encadrée — la confiance dans le texte g�
 
 - **lecture seule stricte** : `SELECT`/`WITH` uniquement, une seule requête, mots-clés d'écriture/administration refusés (`INSERT`, `UPDATE`, `DROP`, `PRAGMA`…) ;
 - **connexion en `mode=ro`** : même une requête qui passerait les filtres ne pourrait pas écrire ;
-- **refus honnête** si la donnée n'existe pas (`should_query=false`) — aucun chiffre inventé ;
+- **refus clair** si la donnée n'existe pas (`should_query=false`) — aucun chiffre inventé ;
 - **colonnes / tables inexistantes bloquées** : une requête qui invente une colonne échoue à l'exécution et l'assistant se rabat sur un refus (observé : le LLM a généré `rebounds_per_game`, colonne absente → `no such column` → refus, sans afficher de chiffre) ;
 - **plafond de lignes** imposé à l'exécution, même si le LLM l'oublie.
 
@@ -520,7 +521,7 @@ Une évaluation complémentaire cible cinq questions chiffrées **impossibles av
 Exemple sur « Quel joueur a le meilleur pourcentage à 3 points sur ses 5 derniers matchs ? » :
 
 - **V3 contrôlé** répond à côté, sur la saison : « Meilleurs tireurs à 3 points (min. 100 tentatives) : 1. Seth Curry 45,6 %… » — des chiffres réels, mais pas la question posée.
-- **V4 LLM→SQL** refuse honnêtement : « Cette question chiffrée n'a pas pu être traitée de façon fiable : la base ne contient pas de données match par match… »
+- **V4 LLM→SQL** refuse clairement : « Cette question chiffrée n'a pas pu être traitée de façon fiable : la base ne contient pas de données match par match… »
 
 Résultat (lecture métier + RAGAS `aspect_critic`) :
 
@@ -563,7 +564,7 @@ Les pistes d’amélioration réalistes seraient d’ajouter des données match 
 
 ## 9. Conclusion
 
-Le projet a avancé en quatre versions (détail chiffré dans le résumé exécutif et les sections §4 à §7). V1 (RAG seul) était fragile sur les questions chiffrées ; V2 (Pydantic / Pydantic AI / Logfire) a amélioré l'ancrage ; V3 a ajouté un **benchmark SQL contrôlé**, stable et sécurisé, qui a fait progresser les questions chiffrées et fourni les garde-fous réutilisés ensuite. **V4 — agent LLM→SQL est la version finale retenue** : conforme à l'énoncé « agent + Tool », au moins à parité avec le benchmark sur E01–E15 et meilleure sur les questions non prévues.
+Le projet a avancé en quatre versions (détail chiffré dans le résumé exécutif et les sections §4 à §7). V1 (RAG seul) était fragile sur les questions chiffrées ; V2 (Pydantic / Pydantic AI / Logfire) a amélioré l'ancrage ; V3 a ajouté un **benchmark SQL contrôlé**, stable et sécurisé, qui a fait progresser les questions chiffrées et fourni les garde-fous réutilisés ensuite. **V4 — agent LLM→SQL est la version finale retenue** « agent + Tool », au moins à parité avec le benchmark sur E01–E15 et meilleure sur les questions non prévues.
 
 Le LLM→SQL n'est **pas « libre »** : toutes ses requêtes sont validées et exécutées par le SQL Tool en **lecture seule** (refus si la donnée n'existe pas, colonnes inexistantes bloquées, aucune écriture). Le mode contrôlé reste utile comme **référence stable**, mais il demande une règle de plus à chaque évolution du schéma : le LLM→SQL est donc plus adapté à un **usage réel évolutif** (par exemple si l'on ajoute un jour des données match par match).
 
@@ -681,3 +682,97 @@ Quelques cas concrets, pour rendre les scores plus parlants (réponses réelles,
 | « …sur ses 5 derniers matchs ? » | V3 contrôlé répond sur la saison (à côté) ; V4 LLM→SQL refuse en expliquant l'absence de données match par match. |
 | « Quelle est la recette de la ratatouille ? » | Hors sujet : refus poli, aucune réponse cuisine. |
 | « Que disent les fans Reddit sur le tournoi play-in ? » | Route RAG texte : synthèse des discussions, sans calcul. |
+
+### Annexe F — OCR : EasyOCR → Nanonets-OCR-s (expérience complémentaire)
+
+Cette annexe résume l’expérience menée sur l’OCR des PDF Reddit. La version V4 de l’assistant reste inchangée : seul le moteur OCR utilisé pour construire l’index documentaire est comparé.
+
+L’objectif n’est pas de remplacer le moteur par défaut, mais de vérifier si un OCR plus riche peut améliorer la route RAG texte, très dépendante de la qualité des captures Reddit.
+
+#### Variante comparée
+
+| Élément | EasyOCR (défaut) | Meilleur Nanonets testé |
+|---|---|---|
+| Moteur OCR | EasyOCR | Nanonets-OCR-s |
+| Texte brut reconnu | Référence historique | +53,5 % de caractères reconnus |
+| Nettoyage documentaire | Non | Oui : chrome Reddit, pubs, balises, compteurs, flux de posts suggérés |
+| Structuration des chunks | Chunk simple | Préfixe du titre de thread sur chaque chunk Reddit |
+| Usage retenu | Moteur par défaut | Option expérimentale documentée |
+
+La configuration Nanonets retenue est donc : **Nanonets-OCR-s + nettoyage documentaire + préfixe du titre de thread**.
+
+#### Exemples de texte OCRisé
+
+**Qualité — extrait avant / après** (début de *Reddit 4.pdf*).
+
+*Avant — EasyOCR (bruité)* :
+
+```text
+12/06/2025 13:12
+Which NBA team did not have home court advantage until the NBA Finals?
+rInba
+Accéder au contenu principal
+Se connecter
+rInba
+ily a 12j
+DonT012
+```
+
+*Après — Nanonets-OCR-s + nettoyage (post + commentaires lisibles)* :
+
+```text
+Which NBA team did not have home court advantage until the NBA Finals?
+In the NHL, the Edmonton Oilers just reached the NHL Finals. In their 3 rounds of play, they did not
+have home court advantage...
+Which NBA team experienced this? First 3 rounds all on the road. Finals at home.
+Six teams have made the Finals with lower than a 4 seed and none of them have had home court...
+Good lord, only 6? I knew it was rare, but I didn't think it was that rare.
+```
+
+**Ce que le nettoyage retire** — extrait du *Nanonets brut* (avant nettoyage), supprimé ensuite :
+
+```text
+<img>r/nba logo</img> r/nba • il y a 12 j DonT012
+<img>272 upvotes, 51 comments</img>
+adidas_Ecom_Europe • Sponsorisé(e)
+Inscris-toi à l'adiClub pour tenter de gagner une carte cadeau de 500 € avec ta Wishlist.
+```
+
+Le nettoyage retire : balises `<img>`/`<div>`, chrome Reddit, pubs, bylines « pseudo • -N j », compteurs,
+flux de posts suggérés ; et **aplatit les tableaux HTML** en lignes « cellule | cellule ».
+
+#### Résultats RAGAS — EasyOCR vs meilleur Nanonets
+
+Moyenne ± écart-type sur 5 runs, jeu figé E01–E15.
+
+**Global — 15 questions**
+
+| Métrique | EasyOCR | Nanonets |
+|---|---:|------------------:|
+| `faithfulness` | 0,539 ± 0,017 | **0,544 ± 0,017** |
+| `answer_relevancy` | 0,604 ± 0,049 | **0,619 ± 0,025** |
+| `context_precision` | 0,552 ± 0,038 | **0,563 ± 0,018** |
+| `context_recall` | **0,618 ± 0,028** |     0,556 ± 0,041 |
+
+**Route RAG — 5 questions documentaires**
+
+| Métrique | EasyOCR | Nanonets |
+|---|---:|------------------:|
+| `faithfulness` | 0,441 ± 0,020 | **0,497 ± 0,013** |
+| `answer_relevancy` | 0,691 ± 0,151 | **0,743 ± 0,067** |
+| `context_precision` | 0,455 ± 0,113 | **0,490 ± 0,055** |
+| `context_recall` | **0,800 ± 0,071** |     0,733 ± 0,122 |
+
+#### Détail sur les questions documentaires pertinentes
+
+| Question | Effet observé |
+|---|---|
+| E02 — discussion Reddit sur l’avantage du terrain | Le préfixe du titre corrige partiellement la perte de rappel : `context_recall` passe de 0,00 avec le nettoyage strict seul à 0,60 avec titre. Le bon chunk Reddit revient plus souvent dans les contextes récupérés. |
+| E03 — arguments pour / contre le play-in | Les contextes deviennent beaucoup plus lisibles. La précision et le rappel restent à 1,00 avec Nanonets. |
+| E12 — question bruitée sur les rebonds | Le cas reste difficile : le rappel progresse légèrement, mais la réponse reste mal couverte. |
+
+#### Lecture
+
+La variante Nanonets améliore surtout la **lisibilité du corpus** et la **fidélité de la route RAG**. Le préfixe du titre aide à ré-ancrer les commentaires Reddit dans le sujet du post, ce qui récupère une partie du rappel perdu par le nettoyage strict.
+
+En pratique, les scores globaux restent proches d’EasyOCR, et le `context_recall` reste meilleur avec le moteur historique. Comme Nanonets-OCR-s est lourd (~7 Go) et que le gain agrégé n’est pas décisif, **EasyOCR reste le moteur par défaut**. Nanonets reste une option documentée (`OCR_ENGINE=nanonets`, `ENABLE_OCR_CLEANING=1`, index construit avec `--prepend-title`).

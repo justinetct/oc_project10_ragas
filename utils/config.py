@@ -16,7 +16,10 @@ MODEL_NAME = "mistral-small-latest" # Ou un autre modèle comme mistral-large-la
 
 # --- Configuration de l'Indexation ---
 INPUT_DIR = "inputs"                # Dossier pour les données sources après extraction
-VECTOR_DB_DIR = "vector_db"         # Dossier pour stocker l'index Faiss et les chunks
+# Dossier de l'index Faiss. Surchargeable par variable d'environnement pour garder
+# PLUSIEURS index côte à côte sans écraser l'index de référence (ex. comparaison
+# OCR : VECTOR_DB_DIR=vector_db_ocr ou VECTOR_DB_DIR=vector_db_noocr). Défaut inchangé.
+VECTOR_DB_DIR = os.getenv("VECTOR_DB_DIR", "vector_db")
 FAISS_INDEX_FILE = os.path.join(VECTOR_DB_DIR, "faiss_index.idx")
 DOCUMENT_CHUNKS_FILE = os.path.join(VECTOR_DB_DIR, "document_chunks.pkl")
 
@@ -25,7 +28,9 @@ CHUNK_OVERLAP = 150                 # Chevauchement en *caractères*
 EMBEDDING_BATCH_SIZE = 32           # Taille des lots pour l'API d'embedding
 
 # --- Configuration de la Recherche ---
-SEARCH_K = 5                        # Nombre de documents à récupérer par défaut
+# Nombre de documents récupérés par défaut. Surchargeable par variable d'environnement
+# (utile pour tester top_k=3/5/8 dans l'expérience OCR sans toucher au code). Défaut : 5.
+SEARCH_K = int(os.getenv("SEARCH_K", "5"))
 
 # --- Configuration du routage (RAG texte / SQL chiffres) ---
 # Mode de réponse aux questions hybrides (chiffre + interprétation) :

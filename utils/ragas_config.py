@@ -92,6 +92,20 @@ RAGAS_TIMEOUT_SECONDS = 600
 RAGAS_MAX_RETRIES = 15
 RAGAS_MAX_WAIT_SECONDS = 90
 
+# Suffixe libre ajouté au nom des fichiers de résultats (défaut : vide = inchangé).
+# Sert à distinguer des conditions qui ne changent PAS les modes SQL/hybride/prompt,
+# typiquement l'index utilisé (ex. RAGAS_RUN_LABEL_SUFFIX=ocr ou noocr pour la
+# comparaison OCR). On ne touche jamais aux fichiers d'une condition sans suffixe.
+def normalize_run_label_suffix(raw):
+    """'ocr' / '_ocr' / ' ocr ' -> '_ocr' ; vide/None -> '' (aucun suffixe)."""
+    if not raw:
+        return ""
+    cleaned = raw.strip().strip("_")
+    return f"_{cleaned}" if cleaned else ""
+
+
+RAGAS_RUN_LABEL_SUFFIX = normalize_run_label_suffix(os.getenv("RAGAS_RUN_LABEL_SUFFIX"))
+
 # None = évaluation complète. Entier N = run partiel sur les N premières questions.
 # Surchargeable par variable d'environnement (RAGAS_LIMIT_QUESTIONS=2) pour un run
 # court de vérification ; le script suffixe alors les fichiers par « _partial ».
