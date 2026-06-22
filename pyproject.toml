@@ -48,12 +48,15 @@ pydantic-ai-slim = {version = "<1.0", extras = ["mistral"]}
 # --- OCR Nanonets-OCR-s (moteur OCR VLM alternatif, opt-in) ---
 transformers = ">=4.49,<5"      # exécute le VLM Nanonets-OCR-s (Qwen2.5-VL) en local
 accelerate = "^1.14.0"       # chargement / placement device du modèle
+# --- Visualisations (PlotTool optionnel : utils/plotting) ---
+# Dépendance applicative (et non plus seulement « notebook ») : le PlotTool optionnel génère
+# les graphiques bar/scatter/pie de l'assistant. Sert aussi au notebook d'illustration RAGAS.
+matplotlib = "^3.10.9"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
 ruff = ">=0.6"
 ipykernel = "^7.0"           # pour exécuter le notebook depuis l'environnement Poetry
-matplotlib = "^3.10.9"       # graphiques du notebook d'illustration RAGAS
 
 # ─── Qualité de code ───────────────────────────────────────────────
 [tool.ruff]

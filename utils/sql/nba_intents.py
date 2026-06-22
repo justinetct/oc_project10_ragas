@@ -69,8 +69,8 @@ UNAVAILABLE_GRANULARITY_TERMS = (
     "10 derniers", "dix derniers", "par mois", "par semaine", "par journee",
 )
 
-# Avertissement honnête (placé en tête de la réponse de repli). Décrit ce qui MANQUE, pas
-# de détail technique : reste cohérent avec le comportement attendu par l'énoncé (E11).
+# Avertissement clair (placé en tête de la réponse de repli). Décrit ce qui MANQUE, pas
+# de détail technique : reste cohérent avec le comportement attendu pour E11.
 SEASON_ONLY_NOTICE = (
     "Je ne dispose pas de statistiques match par match (ni de répartition "
     "domicile/extérieur, ni de « derniers matchs ») : les données sont agrégées sur "
@@ -438,7 +438,7 @@ def answer_numeric_question(question):
 def answer_season_fallback(question):
     """(réponse FR, lignes de contexte) pour une question à granularité indisponible, sinon None.
 
-    Réponse HONNÊTE commune aux deux modes SQL (contrôlé et LLM) : on signale l'absence de
+    Réponse claire commune aux deux modes SQL (contrôlé et LLM) : on signale l'absence de
     données match par match / domicile-extérieur, puis on donne l'agrégat SAISON de la stat
     citée (via le SQL Tool sécurisé). Aucun chiffre inventé. Si la donnée saison est
     indisponible, on renvoie au moins l'avertissement (`SEASON_ONLY_NOTICE`).

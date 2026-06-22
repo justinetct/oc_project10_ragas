@@ -27,6 +27,14 @@ from .schemas import RagAnswer
 from .sql.nba_intents import NOT_SUPPORTED_MESSAGE, answer_numeric_question, answer_season_fallback
 from .text import mentions, normalize
 
+# Demande explicite de graphique -> route "plot" (PlotTool optionnel). Termes volontairement
+# spécifiques au tracé : sans l'un d'eux, une question chiffrée reste sur la route SQL habituelle.
+PLOT_TERMS = (
+    "graphique", "graphe", "graph", "diagramme", "camembert", "histogramme", "courbe",
+    "nuage de points", "scatter", "visualise", "visualiser", "visualisation", "trace",
+    "tracer", "barres", "bar chart", "represente graphiquement",
+)
+
 # Sujets clairement hors périmètre (autres sports, cuisine, etc.).
 OFF_TOPIC_TERMS = (
     "football", "foot", "soccer", "psg", "om", "ligue 1", "tennis", "rugby", "f1",
@@ -86,6 +94,7 @@ ROUTE_LABELS = {
     "rag": "RAG texte",
     "sql": "SQL chiffres",
     "hybrid": "Hybride (SQL + rédaction)",
+    "plot": "Graphique",
     "out_of_scope": "Hors périmètre",
 }
 
@@ -96,11 +105,14 @@ SQL_VOLUME_FILTER_LABEL = "Filtre 3P% : minimum 100 tentatives"
 HYBRID_SQL_SOURCE_LABEL = "Chiffre vérifié : base SQLite NBA"
 # Mode LLM→SQL : provenance résumée (jamais le SQL brut).
 LLM_SQL_SOURCE_LABEL = "Requête SQL générée par le LLM, validée puis exécutée en lecture seule"
+# Route graphique (PlotTool optionnel) : provenance résumée (jamais le SQL brut).
+PLOT_SOURCE_LABEL = "Graphique généré (matplotlib) à partir de la base SQLite NBA"
 
 # Notices courtes (la « limite / avertissement » affichée sous la réponse).
 RAG_NOTICE = "Réponse générée à partir des documents retrouvés."
 SQL_NOTICE = "Chiffre calculé sur les données de la saison (SQL Tool en lecture seule)."
 HYBRID_NOTICE = "Chiffre vérifié par SQL, interprétation rédigée à partir des documents."
+PLOT_NOTICE = "Graphique généré à partir des statistiques de saison (SQL Tool en lecture seule)."
 OUT_OF_SCOPE_NOTICE = "La question ne correspond pas aux sources NBA disponibles."
 MISSING_INFO_NOTICE = "Information non disponible : aucun chiffre n'a été inventé."
 
@@ -113,12 +125,15 @@ class RoutedAnswer(BaseModel):
     que `answer`/`route`/`mode`/`retrieved_contexts` n'est pas affectée.
     """
 
-    route: Literal["rag", "sql", "hybrid", "out_of_scope"]
+    route: Literal["rag", "sql", "hybrid", "plot", "out_of_scope"]
     answer: str
     retrieved_contexts: list[str] = Field(default_factory=list)
     mode: str | None = None
     sources: list[str] = Field(default_factory=list)
     notice: str | None = None
+    # Route graphique uniquement : chemin de l'image générée (None sinon). Optionnel, donc
+    # l'évaluation (qui ne lit que answer/route/mode/retrieved_contexts) n'est pas affectée.
+    image_path: str | None = None
 
 
 def summarize_rag_sources(results, limit=3):
@@ -148,24 +163,31 @@ def classify_question(question):
     """Choisit la route ("rag" | "sql" | "hybrid" | "out_of_scope") par règles simples."""
     q = normalize(question)
 
-    # 1. Hors périmètre : sujet étranger explicite, ou aucun signal NBA.
-    if mentions(q, OFF_TOPIC_TERMS) or not mentions(q, NBA_TERMS):
+    # 1. Hors périmètre : sujet étranger explicite -> refus, même si un mot « graphique » suit.
+    if mentions(q, OFF_TOPIC_TERMS):
+        return "out_of_scope"
+    # 2. Demande explicite de graphique (PlotTool optionnel) : prioritaire sur SQL/RAG. La
+    #    faisabilité réelle (intention supportée, données disponibles) est tranchée par la route.
+    if mentions(q, PLOT_TERMS):
+        return "plot"
+    # 3. Toujours hors périmètre si aucun signal NBA (et pas de demande de graphique).
+    if not mentions(q, NBA_TERMS):
         return "out_of_scope"
 
     numeric = mentions(q, NUMERIC_TERMS)
     interpret = mentions(q, INTERPRET_TERMS)
     opinion = mentions(q, OPINION_TERMS)
 
-    # 2. Chiffre + interprétation -> hybride.
+    # 4. Chiffre + interprétation -> hybride.
     if numeric and interpret:
         return "hybrid"
-    # 3. Opinion / discussion -> RAG texte (prime sur un simple mot chiffré).
+    # 5. Opinion / discussion -> RAG texte (prime sur un simple mot chiffré).
     if opinion:
         return "rag"
-    # 4. Chiffre -> SQL.
+    # 6. Chiffre -> SQL.
     if numeric:
         return "sql"
-    # 5. Par défaut, en domaine NBA -> RAG texte.
+    # 7. Par défaut, en domaine NBA -> RAG texte.
     return "rag"
 
 
@@ -183,7 +205,50 @@ def answer_question(question, manager=None, force_route=None):
         return _answer_sql(question)
     if route == "hybrid":
         return _answer_hybrid(question, manager)
+    if route == "plot":
+        return _answer_plot(question)
     return _answer_rag(question, manager)
+
+
+def _answer_plot(question):
+    """Route graphique (PlotTool optionnel) : données SQL contrôlées -> image matplotlib.
+
+    Import paresseux du PlotTool (et donc de matplotlib) : aucun coût tant qu'aucun graphique
+    n'est demandé, et le reste du routage reste inchangé. Tout refus (granularité absente,
+    données indisponibles, intention non reconnue) renvoie un message clair, jamais de SQL
+    brut ni de chiffre inventé, et aucune image.
+    """
+    from .plotting.intents import PLOT_NOT_SUPPORTED_MESSAGE, build_plot
+    from .plotting.plot_tool import PlotError, render_chart
+
+    try:
+        built = build_plot(question)
+    except PlotError as exc:  # refus clair (granularité absente, équipe manquante…)
+        return RoutedAnswer(route="plot", answer=str(exc), notice=MISSING_INFO_NOTICE)
+    except FileNotFoundError:
+        return RoutedAnswer(
+            route="plot",
+            answer="La base de statistiques n'est pas disponible. "
+                   "Générez-la avec : poetry run python scripts/load_excel_to_db.py",
+            notice=MISSING_INFO_NOTICE,
+        )
+
+    if built is None:  # aucune intention graphique reconnue
+        return RoutedAnswer(route="plot", answer=PLOT_NOT_SUPPORTED_MESSAGE, notice=MISSING_INFO_NOTICE)
+
+    request, answer_text, _description = built
+    try:
+        result = render_chart(request)
+    except PlotError as exc:  # données incompatibles avec un graphique lisible
+        return RoutedAnswer(route="plot", answer=str(exc), notice=MISSING_INFO_NOTICE)
+
+    return RoutedAnswer(
+        route="plot",
+        answer=answer_text,
+        image_path=result.image_path,
+        sources=[PLOT_SOURCE_LABEL, SQL_TOOL_LABEL],
+        notice=PLOT_NOTICE,
+    )
 
 
 def _answer_rag(question, manager):
@@ -212,7 +277,7 @@ Par défaut (`SQL_GENERATION_MODE=llm`, recommandé) la requête est générée 
     déterministe et stable.
 
     Cas particulier traité AVANT le choix du mode : une question à granularité indisponible
-    (domicile/extérieur, matchs récents) reçoit une réponse honnête IDENTIQUE dans les deux
+    (domicile/extérieur, matchs récents) reçoit une réponse claire IDENTIQUE dans les deux
     modes (on n'a que des stats de saison ; on le signale et on donne l'agrégat saison).
     """
     fallback = answer_season_fallback(question)
@@ -251,7 +316,7 @@ def _answer_sql_llm(question):
     Active quand `SQL_GENERATION_MODE=llm` (le défaut). Le LLM n'exécute jamais de SQL :
     `run_llm_sql` génère la requête, la valide (lecture seule) et la passe au SQL Tool
     sécurisé. En cas de refus, d'échec de validation ou d'erreur, on renvoie un message
-    honnête (aucun chiffre inventé, jamais de SQL brut affiché). `mode="llm_sql"` trace
+    clair (aucun chiffre inventé, jamais de SQL brut affiché). `mode="llm_sql"` trace
     la condition pour la comparaison RAGAS.
     """
     from .sql.llm_sql_pipeline import run_llm_sql  # import paresseux : aucun coût en mode contrôlé

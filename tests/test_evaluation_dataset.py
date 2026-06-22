@@ -58,7 +58,7 @@ def test_dataset_file_present():
 
 def test_dataset_row_count():
     records = load_records()
-    # Jeu volontairement petit (explicable en soutenance), mais pas vide.
+    # Jeu volontairement petit (facile à expliquer), mais pas vide.
     assert 12 <= len(records) <= 18
 
 

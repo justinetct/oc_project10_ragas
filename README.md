@@ -36,6 +36,7 @@ Pour une vue d'ensemble en une minute, voir le [résumé exécutif du rapport](d
 - [Observabilité](#observabilité)
 - [SQL Tool LangChain (lecture seule)](#sql-tool-langchain-lecture-seule)
 - [Modes SQL : benchmark contrôlé et version finale LLM→SQL](#modes-sql--benchmark-contrôlé-et-version-finale-llmsql)
+- [Option PlotTool (visualisations)](#option-plottool-visualisations)
 - [Annexe — Expérience OCR Nanonets](#annexe--expérience-ocr-nanonets)
 
 ## Architecture
@@ -64,6 +65,7 @@ Voir le schéma d'architecture détaillé dans le rapport : [docs/final_report.m
 │   ├── evaluation_questions.csv              # Jeu figé E01-E15 (comparaison officielle)
 │   ├── evaluation_questions_sql_extended.csv # Jeu étendu de questions chiffrées (analyse SQL)
 │   ├── evaluation_questions_unsupported.csv  # Jeu complémentaire : questions chiffrées non supportées
+│   ├── evaluation_questions_plot.csv         # Jeu complémentaire des visualisations (PlotTool)
 │   └── results/                 # Résultats RAGAS + sql_modes_unsupported_analysis.md (synthèse métier)
 ├── inputs/                      # Documents sources
 │   ├── Reddit 1.pdf
@@ -96,6 +98,10 @@ Voir le schéma d'architecture détaillé dans le rapport : [docs/final_report.m
 │   │   ├── sql_tool.py              # SQL Tool LangChain en lecture seule
 │   │   ├── llm_sql_generator.py     # Mode LLM→SQL (version finale) : le LLM propose une requête SQL
 │   │   └── llm_sql_pipeline.py      # Valide puis exécute la requête générée (lecture seule)
+│   ├── plotting/                # PlotTool optionnel : visualisations matplotlib
+│   │   ├── schemas.py               # Modèles Pydantic (PlotRequest / PlotResult / ChartType)
+│   │   ├── plot_tool.py             # Rendu matplotlib (bar/scatter/pie) + Tool LangChain
+│   │   └── intents.py               # Demande → données SQL contrôlées → PlotRequest
 │   ├── text.py                  # Normalisation et détection de mots-clés (routage)
 │   └── vector_store.py          # Création et interrogation de l'index FAISS
 ├── .env.example                 # Exemple de configuration sans clé réelle
@@ -236,6 +242,7 @@ http://localhost:8501
 - **RAG texte** (FAISS) pour les questions documentaires, opinions et discussions Reddit ;
 - **SQL chiffres** (SQL Tool en lecture seule) pour les questions chiffrées : classements, maximum, total, fiche d'un joueur ;
 - **Hybride** pour les questions mixtes : le chiffre est récupéré par SQL (fait vérifié), puis la réponse est rédigée par le LLM ;
+- **Graphique** (extension optionnelle) pour les demandes explicites de visualisation (« graphique », « camembert », « nuage de points »…) — voir [Option PlotTool](#option-plottool-visualisations) ;
 - **Hors périmètre** : refus poli pour les questions hors NBA.
 
 L'orchestration est dans `utils/router.py`. Deux façons de produire la requête SQL coexistent (voir la section dédiée plus bas) :
@@ -421,6 +428,37 @@ SQL_GENERATION_MODE=llm poetry run python scripts/analyze_llm_sql_generation.py
 Résultats écrits dans `evaluation/results/` : `llm_sql_generation_analysis.csv` et `llm_sql_generation_analysis.json`.
 
 La comparaison RAGAS des modes SQL reste possible via le même pipeline (`scripts/evaluate_ragas.py`), en activant `SQL_GENERATION_MODE=llm`, mais n'est pas lancée automatiquement (coût API).
+
+## Option PlotTool (visualisations)
+
+> **Extension optionnelle.** Le PlotTool **n'altère pas** l'assistant texte/SQL : il ajoute une route `Graphique` qui ne se déclenche que sur une demande explicite de visualisation. Sans mot de tracé, le routage reste strictement identique à avant.
+
+Le PlotTool (`utils/plotting/`) génère à la volée un graphique **matplotlib** à partir des statistiques de la base SQLite. Le flux reprend les garde-fous du reste du projet : les données viennent **toujours** du SQL Tool en lecture seule (aucune donnée inventée, aucun SQL brut affiché), l'entrée de tracé est **validée par Pydantic** (`PlotRequest`), et le rendu est borné (top 10/15, types sur liste blanche). La sortie est un **fichier image** (`PlotResult` : chemin PNG + titre + description), affiché sous la réponse dans Streamlit — pas de base64.
+
+**Limite assumée du dataset.** Le fichier source est **agrégé sur la saison** (une ligne par joueur, aucune dimension match par match). Les exemples « 5 derniers matchs », « domicile / extérieur » ou « historique match par match » **ne sont donc pas réalisables** : ils sont explicitement **refusés** avec un message clair (et sans graphique). Lorsqu'une moyenne « par match » est tracée (nuage de points), elle est calculée comme `points de la saison ÷ matchs joués` et **libellée comme une moyenne de saison**, jamais comme un relevé match par match.
+
+Graphiques supportés (intentions explicites reconnues — `utils/plotting/intents.py`) :
+
+| Demande utilisateur (exemple) | Graphique | Données |
+|---|---|---|
+| « Affiche un **graphique** du top 10 des marqueurs » | barres | points (total saison) |
+| « **Compare** sur un **graphique** les points, rebonds et passes de Jokić et Dončić » | barres groupées | totaux saison de 2 à 4 joueurs nommés |
+| « **Trace** un **graphique** du top 10 au pourcentage à 3 points » | barres | 3P% (filtre ≥ 100 tentatives) |
+| « **Graphique** des équipes qui marquent le plus de points » | barres | total de points par équipe |
+| « Montre un **nuage de points** entre usage rate et points par match » | scatter | usage_pct × points/match (≥ 40 matchs) |
+| « **Répartition** des points des Lakers en **camembert** » | pie | part de chaque joueur (top 6 + « Autres ») |
+
+Exemples **refusés** (clairement, sans inventer de données) : toute demande match par match / 5 derniers matchs / domicile-extérieur, un graphique sans intention reconnue, un camembert sans équipe précisée, ou un volume de lignes trop élevé.
+
+Pour l'essayer dans l'interface (la base SQLite doit être construite au préalable) :
+
+```bash
+poetry run python scripts/load_excel_to_db.py   # si pas déjà fait
+poetry run streamlit run MistralChat.py
+# puis : « Affiche un graphique du top 10 des marqueurs »
+```
+
+Les images sont écrites dans `data/plots/` (dossier non versionné). Pour une démonstration, les deux exemples les plus parlants sont le **top 10 des marqueurs** (barres, lecture immédiate) et le **nuage de points usage rate / points par match** (qui illustre une corrélation réelle tout en montrant le second type de graphique).
 
 ## Annexe — Expérience OCR Nanonets
 

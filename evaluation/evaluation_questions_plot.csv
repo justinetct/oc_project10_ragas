@@ -1,0 +1,9 @@
+id,question,expected_route,expected_chart,supported,note
+P01,Affiche un graphique du top 10 des marqueurs,plot,bar,yes,Classement des marqueurs (total points saison)
+P02,"Compare sur un graphique les points, rebonds et passes de Jokić et Dončić",plot,bar,yes,Barres groupées sur 2 joueurs nommés
+P03,Trace un graphique du top 10 au pourcentage à 3 points,plot,bar,yes,Filtre de volume (>= 100 tentatives)
+P04,Affiche un graphique des équipes qui marquent le plus de points,plot,bar,yes,Total de points par équipe
+P05,Montre un nuage de points entre usage rate et points par match,plot,scatter,yes,usage_pct x points/match (>= 40 matchs)
+P06,Répartition des points des Lakers en camembert,plot,pie,yes,Part de chaque joueur (top 6 + Autres)
+P07,Trace un graphique de l'évolution des points sur les 5 derniers matchs,plot,,no,Refus : pas de données match par match
+P08,Graphique des rebonds à domicile et à l'extérieur des équipes,plot,,no,Refus : pas de découpage domicile/extérieur

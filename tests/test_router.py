@@ -180,7 +180,7 @@ def test_youngest_player_returns_wembanyama(sql_db):
 
 
 def test_recent_games_question_falls_back_to_season(sql_db):
-    """« 5 derniers matchs » : pas de chiffre inventé, mais un repli HONNÊTE sur la saison.
+    """« 5 derniers matchs » : pas de chiffre inventé, mais un repli clair sur la saison.
 
     On signale l'absence de données match par match, puis on donne le total de rebonds par
     équipe sur la saison (données réelles)."""
@@ -196,7 +196,7 @@ def test_recent_games_question_falls_back_to_season(sql_db):
 
 
 def test_home_away_question_falls_back_to_season(sql_db):
-    """E11 (énoncé) : domicile/extérieur indisponible -> repli saison honnête, pas de refus sec."""
+    """E11 : domicile/extérieur indisponible -> repli saison clair, pas de refus sec."""
     result = answer_question(
         "Compare les rebonds à domicile et à l'extérieur des équipes sur leurs 5 derniers matchs.",
         manager=None,
