@@ -407,7 +407,7 @@ def test_router_llm_mode_refuses_dangerous_generated_sql(sql_db, monkeypatch):
 
 
 def test_llm_mode_uses_season_fallback_without_calling_llm(sql_db, monkeypatch):
-    """En mode llm, une question domicile/extérieur passe par le repli saison HONNÊTE,
+    """En mode llm, une question domicile/extérieur passe par le repli saison clair,
     sans solliciter le générateur LLM (réponse identique au mode contrôlé)."""
     monkeypatch.setattr(router, "SQL_GENERATION_MODE", "llm")
 
