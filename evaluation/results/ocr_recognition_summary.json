@@ -1,0 +1,39 @@
+{
+  "easyocr": {
+    "Reddit 4.pdf": {
+      "chars": 14769,
+      "words": 2551
+    },
+    "Reddit 1.pdf": {
+      "chars": 24019,
+      "words": 4001
+    },
+    "Reddit 3.pdf": {
+      "chars": 56553,
+      "words": 9556
+    },
+    "Reddit 2.pdf": {
+      "chars": 38420,
+      "words": 6611
+    }
+  },
+  "nanonets": {
+    "Reddit 4.pdf": {
+      "chars": 20020,
+      "words": 3215
+    },
+    "Reddit 1.pdf": {
+      "chars": 31252,
+      "words": 4754
+    },
+    "Reddit 3.pdf": {
+      "chars": 86505,
+      "words": 12996
+    },
+    "Reddit 2.pdf": {
+      "chars": 67553,
+      "words": 9755
+    }
+  },
+  "note": "Taux de reconnaissance OCR (PDF Reddit) — caractères/mots par document. EasyOCR vs Nanonets-OCR-s."
+}
