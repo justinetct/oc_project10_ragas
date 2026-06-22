@@ -1,8 +1,27 @@
 # Rapport de mise en place et d'évaluation du système RAG
 
+> ### Résumé exécutif
+>
+> Ce projet améliore un assistant NBA qui répond à partir de documents (discussions Reddit) et de statistiques de saison (fichier Excel). 
+> Le travail s'est fait en quatre versions, chacune corrigeant la limite de la précédente :
+>
+> - **V1 — baseline RAG** : le système retrouve des passages puis rédige. Il marche, mais reste fragile, surtout sur les **questions chiffrées** (il reformule un extrait au lieu de calculer) : `faithfulness` ≈ 0,25.
+> - **V2 — RAG contrôlé** : ajout de Pydantic, Pydantic AI et Logfire pour structurer et tracer la génération. Les réponses sont mieux ancrées dans les sources (`faithfulness` ≈ 0,36).
+> - **V3 — SQL contrôlé (benchmark)** : les statistiques sont chargées dans une base SQLite interrogée par un **SQL Tool en lecture seule**, avec des requêtes issues d'un mapping figé. C'est un **benchmark sécurisé et stable**, pas la version finale ; il fait nettement progresser les questions chiffrées (`faithfulness` ≈ 0,51).
+> - **V4 — agent LLM→SQL (version finale)** : le LLM détecte la question chiffrée, propose une requête SQL, appelle le SQL Tool, puis synthétise. 
+>
+> **Résultat clé** : sur le jeu figé de 15 questions, V4 est **au moins à parité** avec le benchmark V3 (`faithfulness` ≈ 0,54).
+> Sur des questions chiffrées **impossibles** avec les données actuelles (ex. « 5 derniers matchs »), V4 est nettement meilleur : il **refuse clairement** au lieu de répondre à côté (`aspect_critic` 0,80 contre 0,20). 
+> Dans les deux modes, aucune statistique n'est inventée : toute requête reste validée et exécutée en lecture seule.
+>
+> **Extensions optionnelles** : deux compléments ont aussi été testés et documentés en annexe : un essai OCR avec Nanonets-OCR-s (EasyOCR reste le moteur par défaut) et un PlotTool qui génère quelques graphiques à partir des statistiques de saison, sans changer la version principale de l'assistant.
+>
+> **Limite principale** : les données sont agrégées sur la saison (pas de match par match). 
+> Les questions qui demandent ce détail (5 derniers matchs, domicile/extérieur, évolution) doivent être refusées — ce que V4 fait mieux que le benchmark.
+
+
 ## Sommaire
 
-- [Résumé exécutif](#résumé-exécutif)
 1. [Contexte du projet](#1-contexte-du-projet)
 2. [Dataset utilisé](#2-dataset-utilisé)
 3. [Méthodologie d'évaluation](#3-méthodologie-dévaluation)
@@ -41,21 +60,7 @@
     - [Annexe D — détail chiffré V3 vs V4 (route SQL)](#annexe-d--détail-chiffré-v3-vs-v4-route-sql)
     - [Annexe E — exemples de réponses](#annexe-e--exemples-de-réponses)
     - [Annexe F — OCR : EasyOCR → Nanonets-OCR-s](#annexe-f--ocr--easyocr--nanonets-ocr-s)
----
-
-## Résumé exécutif
-
-Ce projet améliore un assistant NBA qui répond à partir de documents (discussions Reddit) et de statistiques de saison (fichier Excel). Le travail s'est fait en quatre versions, chacune corrigeant la limite de la précédente :
-
-- **V1 — baseline RAG** : le système retrouve des passages puis rédige. Il marche, mais reste fragile, surtout sur les **questions chiffrées** (il reformule un extrait au lieu de calculer) : `faithfulness` ≈ 0,25.
-- **V2 — RAG contrôlé** : ajout de Pydantic, Pydantic AI et Logfire pour structurer et tracer la génération. Les réponses sont mieux ancrées dans les sources (`faithfulness` ≈ 0,36).
-- **V3 — SQL contrôlé (benchmark)** : les statistiques sont chargées dans une base SQLite interrogée par un **SQL Tool en lecture seule**, avec des requêtes issues d'un mapping figé. C'est un **benchmark sécurisé et stable**, pas la version finale ; il fait nettement progresser les questions chiffrées (`faithfulness` ≈ 0,51).
-- **V4 — agent LLM→SQL (version finale)** : le LLM détecte la question chiffrée, propose une requête SQL, appelle le SQL Tool, puis synthétise. C'est l'approche « agent + Tool », retenue comme version finale.
-
-**Résultat clé** : sur le jeu figé E01–E15, V4 est **au moins à parité** avec le benchmark V3 (`faithfulness` ≈ 0,54). Sur des questions chiffrées **impossibles** avec les données actuelles (ex. « 5 derniers matchs »), V4 est nettement meilleur : il **refuse clairement** au lieu de répondre à côté (`aspect_critic` 0,80 contre 0,20). Dans les deux modes, aucune statistique n'est inventée : toute requête reste validée et exécutée en lecture seule.
-
-**Limite principale** : les données sont agrégées sur la saison (pas de match par match). Les questions qui demandent ce détail (5 derniers matchs, domicile/extérieur, évolution) doivent être refusées — ce que V4 fait mieux que le benchmark.
-
+    - [Annexe G — PlotTool (visualisations, extension optionnelle)](#annexe-g--plottool-visualisations-extension-optionnelle)
 ---
 
 ## 1. Contexte du projet
@@ -691,10 +696,10 @@ L’objectif n’est pas de remplacer le moteur par défaut, mais de vérifier s
 
 #### Variante comparée
 
-| Élément | EasyOCR (défaut) | Meilleur Nanonets testé |
+| Élément | EasyOCR (défaut) | Nanonets |
 |---|---|---|
 | Moteur OCR | EasyOCR | Nanonets-OCR-s |
-| Texte brut reconnu | Référence historique | +53,5 % de caractères reconnus |
+| Texte brut reconnu | Référence historique | Texte brut plus long et plus structuré |
 | Nettoyage documentaire | Non | Oui : chrome Reddit, pubs, balises, compteurs, flux de posts suggérés |
 | Structuration des chunks | Chunk simple | Préfixe du titre de thread sur chaque chunk Reddit |
 | Usage retenu | Moteur par défaut | Option expérimentale documentée |
@@ -741,7 +746,7 @@ Inscris-toi à l'adiClub pour tenter de gagner une carte cadeau de 500 € avec 
 Le nettoyage retire : balises `<img>`/`<div>`, chrome Reddit, pubs, bylines « pseudo • -N j », compteurs,
 flux de posts suggérés ; et **aplatit les tableaux HTML** en lignes « cellule | cellule ».
 
-#### Résultats RAGAS — EasyOCR vs meilleur Nanonets
+#### Résultats RAGAS — EasyOCR vs Nanonets
 
 Moyenne ± écart-type sur 5 runs, jeu figé E01–E15.
 
@@ -776,3 +781,43 @@ Moyenne ± écart-type sur 5 runs, jeu figé E01–E15.
 La variante Nanonets améliore surtout la **lisibilité du corpus** et la **fidélité de la route RAG**. Le préfixe du titre aide à ré-ancrer les commentaires Reddit dans le sujet du post, ce qui récupère une partie du rappel perdu par le nettoyage strict.
 
 En pratique, les scores globaux restent proches d’EasyOCR, et le `context_recall` reste meilleur avec le moteur historique. Comme Nanonets-OCR-s est lourd (~7 Go) et que le gain agrégé n’est pas décisif, **EasyOCR reste le moteur par défaut**. Nanonets reste une option documentée (`OCR_ENGINE=nanonets`, `ENABLE_OCR_CLEANING=1`, index construit avec `--prepend-title`).
+
+### Annexe G — PlotTool (visualisations, extension optionnelle)
+
+Cette annexe documente une **extension optionnelle** de l’assistant : un **PlotTool** qui génère à la volée des graphiques à partir des statistiques de la base SQLite. Ce n'est **pas** une amélioration du système principal : l'assistant texte/SQL (V1 → V4) est **inchangé**, et la route `Graphique` ne se déclenche que sur une demande explicite de visualisation (mots « graphique », « camembert », « nuage de points »…). Sans un de ces mots, le routage reste strictement identique.
+
+#### Choix des exemples : ce que le dataset permet (et interdit)
+
+| # | Demande utilisateur | Graphique | Données | Compatibilité dataset |
+|---|---|---|---|---|
+| 1 | Top 10 des marqueurs | barres | `points` (total saison) | Classement direct (= `top_scorers`) |
+| 2 | Comparaison Jokić / Dončić (points, rebonds, passes) | barres groupées | totaux saison de 2 à 4 joueurs | Réutilise la requête fiche joueur paramétrée |
+| 3 | Top 10 au pourcentage à 3 points | barres | `three_point_pct` (≥ 100 tentatives) | Filtre de volume déjà en place (§6) |
+| 4 | Équipes qui marquent le plus | barres | `SUM(points)` par équipe | Agrégat équipe (= total points) |
+| 5 | Usage rate × points par match | scatter | `usage_pct` × `points/games_played` (≥ 40 matchs) | Deux taux/moyennes de saison fiables |
+| 6 | Répartition des points d'une équipe | camembert | part de chaque joueur (top 6 + « Autres ») | Total équipe = 100 %, donc pertinent |
+
+**Note méthodologique (points « par match »).** Le dataset ne contient pas de relevé match par match. La « moyenne par match » du nuage de points (#5) est calculée comme `points de la saison ÷ matchs joués` et **présentée comme une moyenne de saison**, jamais comme une suite de matchs. C'est la lecture cohérente avec la donnée disponible.
+
+#### Exemples de rendus (interface Streamlit)
+
+Dans l'application, la route « Graphique » affiche, sous la réponse texte, le graphique généré puis l'encart « Sources et limites » (provenance résumée, jamais de SQL brut).
+
+|                      Nuage de points (exemple #5)                       | Camembert (exemple #6) |
+|:-----------------------------------------------------------------------:|:---:|
+| ![volume offensif vs moyenne de saison](img/plot_scatter_streamlit.png) | ![Répartition des points des Lakers — Streamlit](img/plot_pie_streamlit.png) |
+|                 *Volume offensif vs moyenne de saison*                  | *Lakers — part de chaque joueur (top 6 + « Autres »).* |
+
+#### Conception et garde-fous
+
+Architecture minimale regroupée dans `utils/plotting/` (sur le modèle de `utils/ocr/` et `utils/sql/`) :
+
+- `schemas.py` — modèles Pydantic `ChartType` (liste blanche : `bar` / `scatter` / `pie`), `PlotRequest` (entrée de tracé validée : catégories non vides, séries de même longueur, valeurs numériques, nombre de séries cohérent avec le type) et `PlotResult` (sortie : chemin PNG + titre + description) ;
+- `intents.py` — reconnaît un petit nombre d'intentions explicites, récupère les données **via le SQL Tool sécurisé en lecture seule**, puis construit un `PlotRequest` ;
+- `plot_tool.py` — rendu **matplotlib** (backend `Agg`) en image PNG, et le même rendu exposé en **Tool LangChain** (`nba_plot`).
+
+Garde-fous (cohérents avec le reste du projet) : aucune donnée inventée (tout vient d'un `SELECT` contrôlé), aucun SQL brut affiché, colonnes/directions sur liste blanche, plafond de lignes (top 10/15), refus clair si les données sont absentes, si le type est non supporté, ou si la demande exige une granularité indisponible. Sortie en **fichier image** (pas de base64), affichée sous la réponse dans Streamlit.
+
+#### Tests et intégration
+
+L'extension est couverte par trois fichiers de tests (sans appel API) : `tests/test_plot_schemas.py` (validation Pydantic), `tests/test_plot_tool.py` (rendu d'un PNG par type + refus : trop de lignes, type non supporté, valeurs non numériques) et `tests/test_plot_intents.py` (détection des intentions + refus match par match / domicile-extérieur, sur base SQLite temporaire). Le **jeu officiel E01–E15 n'est pas modifié** ; aucun test existant n'est affecté.
