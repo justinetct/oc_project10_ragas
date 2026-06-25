@@ -196,10 +196,17 @@ Lancer l'indexation :
 poetry run python indexer.py
 ```
 
-Cette commande lit les documents du dossier `inputs/`, extrait leur contenu, génère les embeddings Mistral et construit l'index FAISS local dans `vector_db/`.
+Cette commande lit les documents du dossier `inputs/`, extrait leur contenu (OCR des captures Reddit inclus), génère les embeddings Mistral et construit l'index FAISS local dans `vector_db/`.
 
 
 > L’indexation par défaut produit **302 chunks**.
+
+> **Note macOS (Apple Silicon).** Sur Mac M1/M2/M3, l'OCR (PyTorch) et faiss ne peuvent pas cohabiter dans le même process (segfault au premier appel OCR). `indexer.py` exécute donc automatiquement l'OCR dans un **sous-process isolé** : la commande unique ci-dessus fonctionne telle quelle. Comportement réglable via `INDEXER_OCR_SUBPROCESS` (`auto` par défaut ; `0` force l'ancien mono-process ; `1` force l'isolation sur toute plateforme). L'extraction reste lançable manuellement en deux étapes si besoin :
+>
+> ```bash
+> poetry run python scripts/ocr/extract_documents.py --output vector_db/documents.pkl
+> poetry run python indexer.py --documents vector_db/documents.pkl
+> ```
 
 ### Option OCR Nanonets
 

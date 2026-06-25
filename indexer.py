@@ -7,13 +7,83 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import argparse
 import logging
+import subprocess
+import sys
+import tempfile
 from typing import Optional
 
 from utils.config import INPUT_DIR
-from utils.data_loader import download_and_extract_zip, load_and_parse_files
+from utils.data_loader import (
+    download_and_extract_zip,
+    load_and_parse_files,
+    ocr_enabled_by_default,
+    ocr_engine_default,
+)
 from utils.vector_store import VectorStoreManager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+# --- Isolation OCR (anti-segfault macOS) ------------------------------------
+# Sur Mac Apple Silicon, faire cohabiter faiss (OpenMP) et PyTorch (EasyOCR /
+# Nanonets) dans le MÊME process provoque un segfault au premier appel OCR. Pour
+# que la commande unique `python indexer.py` fonctionne quand même, on délègue
+# l'extraction OCR à un sous-process dédié (scripts/ocr/extract_documents.py, qui
+# n'importe jamais faiss), puis on indexe le pickle obtenu côté faiss. C'est la
+# version automatique de la procédure manuelle en deux étapes.
+_EXTRACT_DOCUMENTS_SCRIPT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "scripts", "ocr", "extract_documents.py"
+)
+
+
+def _should_isolate_ocr(enable_ocr: bool) -> bool:
+    """Faut-il extraire les documents (OCR) dans un sous-process séparé de faiss ?
+
+    Réglable via INDEXER_OCR_SUBPROCESS :
+      - "auto" (défaut) : isole uniquement sur macOS quand l'OCR est actif
+        (c'est là que le segfault faiss + PyTorch se produit) ;
+      - "1"/"true"/"yes" : isole toujours quand l'OCR est actif ;
+      - "0"/"false"/"no" : n'isole jamais (ancien comportement, un seul process).
+    Sans OCR, aucun runtime PyTorch n'est chargé : l'isolation est inutile.
+    """
+    if not enable_ocr:
+        return False
+    mode = os.getenv("INDEXER_OCR_SUBPROCESS", "auto").strip().lower()
+    if mode in ("0", "false", "no"):
+        return False
+    if mode in ("1", "true", "yes"):
+        return True
+    return sys.platform == "darwin"
+
+
+def _extract_documents_via_subprocess(input_directory: str, enable_ocr: bool,
+                                      ocr_engine: Optional[str]) -> list:
+    """Extrait les documents (OCR inclus) dans un sous-process SANS faiss, puis les charge.
+
+    Délègue à scripts/ocr/extract_documents.py (process isolé) pour éviter le segfault
+    macOS (faiss + PyTorch dans le même process), et renvoie la liste de documents.
+    """
+    import pickle
+
+    with tempfile.TemporaryDirectory(prefix="indexer_ocr_") as tmp_dir:
+        pickle_path = os.path.join(tmp_dir, "documents.pkl")
+        cmd = [sys.executable, _EXTRACT_DOCUMENTS_SCRIPT,
+               "--input-dir", input_directory, "--output", pickle_path,
+               "--ocr" if enable_ocr else "--no-ocr"]
+        if ocr_engine:
+            cmd += ["--ocr-engine", ocr_engine]
+        logging.info("Extraction OCR isolée dans un sous-process (anti-segfault faiss+PyTorch) : %s",
+                     " ".join(cmd))
+        try:
+            subprocess.run(cmd, check=True)
+        except subprocess.CalledProcessError as e:
+            logging.error("L'extraction OCR isolée a échoué (code %s). Repli : lancer l'extraction "
+                          "puis `indexer.py --documents <pickle>`, ou forcer le mono-process avec "
+                          "INDEXER_OCR_SUBPROCESS=0.", e.returncode)
+            raise
+        with open(pickle_path, "rb") as f:
+            return pickle.load(f)
+
 
 def run_indexing(input_directory: str, data_url: Optional[str] = None,
                  enable_ocr: Optional[bool] = None, ocr_engine: Optional[str] = None,
@@ -53,7 +123,14 @@ def run_indexing(input_directory: str, data_url: Optional[str] = None,
 
         # --- Étape 2: Chargement et Parsing des Fichiers ---
         logging.info(f"Chargement et parsing des fichiers depuis: {input_directory}")
-        documents = load_and_parse_files(input_directory, enable_ocr=enable_ocr, ocr_engine=ocr_engine)
+        # On résout la décision OCR ici pour savoir s'il faut isoler l'extraction
+        # (PyTorch) du process d'indexation (faiss) — voir _should_isolate_ocr.
+        resolved_enable_ocr = ocr_enabled_by_default() if enable_ocr is None else enable_ocr
+        resolved_engine = ocr_engine if ocr_engine is not None else ocr_engine_default()
+        if _should_isolate_ocr(resolved_enable_ocr):
+            documents = _extract_documents_via_subprocess(input_directory, resolved_enable_ocr, resolved_engine)
+        else:
+            documents = load_and_parse_files(input_directory, enable_ocr=enable_ocr, ocr_engine=ocr_engine)
 
     if not documents:
         logging.warning("Aucun document n'a été chargé ou parsé. Vérifiez le contenu du dossier d'entrée.")
