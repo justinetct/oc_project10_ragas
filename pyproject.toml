@@ -95,6 +95,13 @@ filterwarnings = [
     "ignore:Importing .* from 'ragas.metrics' is deprecated:DeprecationWarning",
     "ignore::DeprecationWarning:PyPDF2.*",
 ]
+
+[tool.logfire]
+# Logfire est optionnel et non bloquant : sans configuration (pas de token), on reste en
+# mode local silencieux. On supprime l'avertissement "non configuré" émis sinon dès le
+# premier span hors application (ex. requete_sql, recherche_vectorielle, en tests/scripts).
+ignore_no_config = true
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"

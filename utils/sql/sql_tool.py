@@ -26,6 +26,7 @@ import os
 import re
 import sqlite3
 
+import logfire
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
@@ -124,16 +125,22 @@ def run_read_only_query(query, params=(), db_file=DB_FILE, limit=DEFAULT_ROW_LIM
         )
 
     limit = max(1, int(limit))
-    # mode=ro : connexion en lecture seule au niveau SQLite (défense en profondeur).
-    conn = sqlite3.connect(f"file:{db_file}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    try:
-        cursor = conn.execute(statement, tuple(params))
-        return [dict(row) for row in cursor.fetchmany(limit)]
-    except sqlite3.Error as exc:
-        raise ValueError(f"Requête SQL invalide : {exc}") from exc
-    finally:
-        conn.close()
+    # Span Logfire dédié : rend la requête SQL et son nombre de lignes visibles dans la
+    # timeline (sous le span "question"), pratique en démo. Non bloquant : sans token
+    # Logfire, le span reste local et silencieux.
+    with logfire.span("requete_sql", query=statement, limit=limit) as span:
+        # mode=ro : connexion en lecture seule au niveau SQLite (défense en profondeur).
+        conn = sqlite3.connect(f"file:{db_file}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = [dict(row) for row in conn.execute(statement, tuple(params)).fetchmany(limit)]
+            span.set_attribute("n_results", len(rows))
+            return rows
+        except sqlite3.Error as exc:
+            span.set_attribute("error", str(exc))
+            raise ValueError(f"Requête SQL invalide : {exc}") from exc
+        finally:
+            conn.close()
 
 
 class SqlQueryInput(BaseModel):
