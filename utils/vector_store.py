@@ -288,7 +288,18 @@ class VectorStoreManager:
             else:
                 logging.info(f"{len(results)} chunks pertinents trouvés.")
 
-            logfire.info("recherche_vectorielle", query=query_text, k=k, n_results=len(results))
+            # Aperçu tronqué des chunks remontés, pour des traces Logfire lisibles en démo :
+            # source + score arrondi + extrait limité à 160 caractères. Jamais le chunk complet.
+            # Purement observationnel : `results` n'est pas modifié, aucun changement fonctionnel.
+            apercu = [
+                {
+                    "source": (r.get("metadata") or {}).get("filename", r.get("source", "?")),
+                    "score": round(r.get("score", 0.0), 1),
+                    "extrait": " ".join((r.get("text") or "").split())[:160],
+                }
+                for r in results
+            ]
+            logfire.info("recherche_vectorielle", query=query_text, k=k, n_results=len(results), apercu=apercu)
             return results
 
         except Exception as e:
